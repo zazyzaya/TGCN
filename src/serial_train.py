@@ -6,23 +6,24 @@ from torch.optim import Adam
 import generators as g
 import load_vgrnn as vd
 import load_cyber as cd 
-from serial_model import SerialTGCN
+from models.serial_model import SerialTGCN, SerialTGCNGraphGRU
 from utils import get_score
 
 torch.set_num_threads(16)
 
-LR = 0.005
+LR = 0.01
 PATIENCE = 50
 SKIP = 0    # Start at t=SKIP - T (so samples have other states to work w)
 
 fmt_score = lambda x : 'AUC: %0.3f AP: %0.3f' % (x[0], x[1])
 
-def train(data, epochs=10000):
+def train(data, epochs=1000):
     # Leave all params as default for now
     model = SerialTGCN(
         data.x.size(1),
-        gcn_out_dim=8,
-        gru_hidden_units=4
+        gcn_out_dim=32,
+        gru_embed_dim=16,
+        gru_hidden_units=1
     )
     opt = Adam(model.parameters(), lr=LR)
 
@@ -42,6 +43,7 @@ def train(data, epochs=10000):
 
         loss = model.loss_fn(
             p+dp+dnp, n+dn+dnn, torch.cat([z, dz, dnz], dim=0)
+            #p, n, z
         )
         loss.backward()
         opt.step()
@@ -210,12 +212,10 @@ def train_cyber(data, epochs=10000, te_history=0):
             )
 
     edges.sort(key=lambda x : x[0], reverse=True)
-    for e in edges:
-        # Just ignore this for now
-        if 'ADMIN' not in e[1]:
-            print('%0.4f: %s' % e)
+    for e in edges:    
+        print('%0.4f: %s' % e)
 
 
 if __name__ == '__main__':
-    data = cd.load_pico()
-    train_cyber(data)
+    data = vd.load_vgrnn('fb')
+    train(data)

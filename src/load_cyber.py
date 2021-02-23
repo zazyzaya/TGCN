@@ -73,7 +73,7 @@ def pico_file_loader(fname, keep=['client', 'ts', 'service']):
 Given several JSON objects representing single hour of auth data,
 generate temporal graphs with delta-hour long partitions
 '''
-def pico_logs_to_graph(logs, delta=6, whitelist=[]):
+def pico_logs_to_graph(logs, delta, whitelist=[]):
     '''
     (Useful) Kerb logs have the following structure:
                                    (where they access from)
@@ -198,7 +198,7 @@ def make_data_obj(eis, cl_to_id, tr_set_partition_end, **kwargs):
     )
     return data
 
-def load_pico():
+def load_pico(delta=6):
     F_LOC = '/mnt/raid0_24TB/datasets/pico/bro/'
     days = [os.path.join(F_LOC,d) for d in os.listdir(F_LOC)]
     days.sort()
@@ -212,7 +212,7 @@ def load_pico():
         for l in list_o_logs:
             logs += l
 
-    return pico_logs_to_graph(logs)
+    return pico_logs_to_graph(logs, delta)
 
 
 '''

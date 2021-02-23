@@ -1,11 +1,14 @@
 import torch 
 
 from torch import nn 
+from torch.autograd import Variable
 from torch_geometric.nn import GCNConv
 
-class GCN(nn.Module):
+from .gcn_gru import GraphGRU
+
+class GAE(nn.Module):
     def __init__(self, feat_dim, embed_dim=16, hidden_dim=32):
-        super(GCN, self).__init__()
+        super(GAE, self).__init__()
 
         self.c1 = GCNConv(feat_dim, hidden_dim, add_self_loops=True)
         self.relu = nn.ReLU()
@@ -22,12 +25,36 @@ class GCN(nn.Module):
 
         return x
 
+class VGAE(nn.Module):
+    def __init__(self, feat_dim, embed_dim=16, hidden_dim=32):
+        super(VGAE, self).__init__()
+
+        self.c1 = GCNConv(feat_dim, hidden_dim, add_self_loops=True)
+        self.relu = nn.ReLU()
+        self.c2 = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
+        self.drop = nn.Dropout(0.25)
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x, ei, ew=None):
+        x = self.c1(x, ei, edge_weight=ew)
+        x = self.relu(x)
+        x = self.drop(x)
+        x = self.c2(x, ei, edge_weight=ew)
+        x = self.drop(x)
+
+        return x
+
+    def _reparam(self, mean, std):
+        eps1 = torch.FloatTensor(std.size()).normal_()
+        eps1 = Variable(eps1)
+        return eps1.mul(std).add_(mean)
+
 class Recurrent(nn.Module):
     def __init__(self, feat_dim, out_dim=16, hidden_dim=32, hidden_units=1):
         super(Recurrent, self).__init__()
 
         self.gru = nn.GRU(
-            feat_dim, hidden_dim, num_layers=hidden_units
+            feat_dim, hidden_dim, num_layers=hidden_units, dropout=0.25
         )
 
         self.drop = nn.Dropout(0.25)
@@ -41,8 +68,7 @@ class Recurrent(nn.Module):
     '''
     def forward(self, xs):
         xs, _ = self.gru(xs)
-        xs = self.drop(xs)
-        return self.lin(xs)
+        return xs 
 
 
 class SerialTGCN(nn.Module):
@@ -54,7 +80,7 @@ class SerialTGCN(nn.Module):
 
         self.dynamic_feats = dynamic_feats
 
-        self.gcn = GCN(
+        self.gcn = GAE(
             feat_dim, embed_dim=gcn_out_dim, 
             hidden_dim=gcn_hidden_dim
         )
@@ -207,3 +233,30 @@ class SerialTGCN(nn.Module):
         # Reshape to 2D 
         ret = ret.view(idx.size(0)*idx.size(1), self.out_dim)
         
+
+
+class SerialTGCNGraphGRU(SerialTGCN):
+    def __init__(self, feat_dim, gcn_out_dim=16, gcn_hidden_dim=32, 
+                gru_hidden_dim=32, gru_embed_dim=16, gru_hidden_units=1,
+                dynamic_feats=False):
+        
+        super(SerialTGCNGraphGRU, self).__init__(
+            feat_dim, gcn_out_dim=gcn_out_dim, 
+            gcn_hidden_dim=gcn_hidden_dim, gru_hidden_dim=gru_hidden_dim, 
+            gru_embed_dim=gru_embed_dim, gru_hidden_units=gru_hidden_units,
+            dynamic_feats=dynamic_feats
+        )
+
+        # Just changing the RNN mechanism 
+        self.gru = GraphGRU(
+            gcn_out_dim, gru_embed_dim, 
+            n_layers=gru_hidden_units
+        ) if gru_hidden_units > 0 else None
+
+    
+    def forward(self, xs, eis, mask_fn, ews=None):
+        embeds = torch.tanh(self.encode(xs, eis, mask_fn, ews))
+
+        return embeds \
+            if type(self.gru) == type(None) \
+            else self.gru(embeds, eis, mask_fn)

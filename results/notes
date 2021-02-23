@@ -1,0 +1,15 @@
+GraphRNN FB:
+742 epochs (very slow, abt 1s/epoch)
+	Final scores: 
+                Static LP:      AUC: 0.949 AP: 0.940
+                Dynamic LP:     AUC: 0.916 AP: 0.903
+                Dynamic New LP: AUC: 0.892 AP: 0.804
+(Better than VGRNN on all counts except Dyn New AP 86.3 in paper)
+
+Regular RNN FB:
+504 epochs
+	Final scores: 
+                Static LP:      AUC: 0.941 AP: 0.930
+                Dynamic LP:     AUC: 0.907 AP: 0.891
+                Dynamic New LP: AUC: 0.887 AP: 0.800
+(Still better than what's reported in VGRNN paper, but worse than G-RNN)
