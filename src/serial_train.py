@@ -1,4 +1,6 @@
 from copy import deepcopy
+import argparse
+from re import M
 
 import torch 
 from torch.optim import Adam
@@ -7,24 +9,20 @@ import generators as g
 import load_vgrnn as vd
 import load_cyber as cd 
 from models.serial_model import SerialTGCN, SerialTGCNGraphGRU
+from models.vgrnn_like import GAE_RNN, VGRNN
 from utils import get_score
 
 torch.set_num_threads(16)
 
 LR = 0.01
 PATIENCE = 50
-SKIP = 0    # Start at t=SKIP - T (so samples have other states to work w)
 
-fmt_score = lambda x : 'AUC: %0.3f AP: %0.3f' % (x[0], x[1])
+fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
-def train(data, epochs=1000):
-    # Leave all params as default for now
-    model = SerialTGCN(
-        data.x.size(1),
-        gcn_out_dim=32,
-        gru_embed_dim=16,
-        gru_hidden_units=1
-    )
+def train(model, data, epochs=1500):
+    # Test/Val on last 3 time steps
+    SKIP = data.T-3
+
     opt = Adam(model.parameters(), lr=LR)
 
     best = (0, None)
@@ -34,36 +32,46 @@ def train(data, epochs=1000):
         opt.zero_grad()
 
         # Get embedding
-        zs = model(data.x, data.eis, data.tr)
+        zs = model(data.x, data.eis[:SKIP], data.tr)
         
         # Calculate static and dynamic loss
-        p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False)
-        dp,dn,dz = g.dynamic_link_prediction(data, data.tr, zs, include_tr=False)
-        dnp, dnn, dnz = g.dynamic_new_link_prediction(data, data.tr, zs, include_tr=False)
+        p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
 
-        loss = model.loss_fn(
-            p+dp+dnp, n+dn+dnn, torch.cat([z, dz, dnz], dim=0)
-            #p, n, z
-        )
+        if model.__class__ == VGRNN:
+            loss = model.loss_fn(p,n,z)
+        
+        # Other models can use more data
+        else:
+            dp,dn,dz = g.dynamic_link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
+            #dnp, dnn, dnz = g.dynamic_new_link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
+
+            loss = model.loss_fn(
+                #p+dp, n+dn, torch.cat([z, dz], dim=0)
+                dp, dn, dz
+            )
+
         loss.backward()
         opt.step()
+
+        # Done by VGRNN to improve convergence
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
 
         trloss = loss.item() 
 
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis, data.tr)
+            zs = model(data.x, data.eis, data.tr)[SKIP:]
         
-            p,n,z = g.link_prediction(data, data.va, zs)
-            st, sf = model.score_fn(p[SKIP:],n[SKIP:],z[SKIP:])
+            p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
+            st, sf = model.score_fn(p,n,z)
             sscores = get_score(st, sf)
 
-            dp,dn,dz = g.dynamic_link_prediction(data, data.va, zs)
-            dt, df = model.score_fn(dp[SKIP:],dn[SKIP:],dz[SKIP:])
+            dp,dn,dz = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+            dt, df = model.score_fn(dp,dn,dz)
             dscores = get_score(dt, df)
 
-            dp,dn,dz = g.dynamic_new_link_prediction(data, data.va, zs)
-            dt, df = model.score_fn(dp[SKIP:],dn[SKIP:],dz[SKIP:])
+            dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+            dt, df = model.score_fn(dp,dn,dz)
             dnscores = get_score(dt, df)
 
             print(
@@ -72,16 +80,19 @@ def train(data, epochs=1000):
             )
 
             avg = (
-                sscores[0] + sscores[1] + 
-                dscores[0] + dscores[1] +
-                dnscores[0] + dnscores[1]
+                sscores[1] +
+                dscores[1] +
+                dnscores[1]
             )
             
             if avg > best[0]:
                 best = (avg, deepcopy(model))
                 no_improvement = 0
             else:
-                no_improvement += 1
+                # Though it's not reflected in the code, the authors for VGRNN imply in the
+                # supplimental material that after 500 epochs, early stopping may kick in 
+                if e > 500:
+                    no_improvement += 1
                 if no_improvement > PATIENCE:
                     print("Early stopping...\n")
                     break
@@ -90,18 +101,18 @@ def train(data, epochs=1000):
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs = model(data.x, data.eis, data.tr)
+        zs = model(data.x, data.eis[SKIP:], data.tr, start_idx=SKIP)
 
-        p,n,z = g.link_prediction(data, data.te, zs)
-        t, f = model.score_fn(p[SKIP:],n[SKIP:],z[SKIP:])
+        p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
+        t, f = model.score_fn(p,n,z)
         sscores = get_score(t, f)
 
-        p,n,z = g.dynamic_link_prediction(data, data.te, zs)
-        t, f = model.score_fn(p[SKIP:],n[SKIP:],z[SKIP:])
+        p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+        t, f = model.score_fn(p,n,z)
         dscores = get_score(t, f)
 
-        p,n,z = g.dynamic_new_link_prediction(data, data.te, zs)
-        t, f = model.score_fn(p[SKIP:],n[SKIP:],z[SKIP:])
+        p,n,z = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+        t, f = model.score_fn(p,n,z)
         nscores = get_score(t, f)
 
         print(
@@ -115,107 +126,56 @@ def train(data, epochs=1000):
         )
 
 
-def train_cyber(data, epochs=10000, te_history=0):
-    # Leave all params as default for now
-    model = SerialTGCN(
-        data.x.size(1),
-        gcn_out_dim=8,
-        gru_hidden_units=4
-    )
-    opt = Adam(model.parameters(), lr=LR)
-
-    best = (0, None)
-    no_improvement = 0
-    for e in range(epochs):
-        model.train()
-        opt.zero_grad()
-
-        ei_tr = data.tr_slice()
-        ei_te = data.te_slice()
-
-        # Get embedding
-        zs = model(data.x, ei_tr, data.tr)
-        
-        # Calculate static and dynamic loss
-        p,n,z = g.link_prediction(data, data.tr, zs, trange=data.tr_range, include_tr=False)
-        dp,dn,dz = g.dynamic_link_prediction(data, data.tr, zs, trange=data.tr_range, include_tr=False)
-        dnp, dnn, dnz = g.dynamic_new_link_prediction(data, data.tr, zs, trange=data.tr_range, include_tr=False)
-
-        loss = model.loss_fn(
-            p+dp+dnp, n+dn+dnn, torch.cat([z, dz, dnz], dim=0)
-        )
-        loss.backward()
-        opt.step()
-
-        trloss = loss.item() 
-
-        with torch.no_grad():
-            model.eval()
-            zs = model(data.x, ei_tr, data.tr)
-        
-            p,n,z = g.link_prediction(data, data.va, zs, trange=data.tr_range)
-            st, sf = model.score_fn(p[SKIP:],n[SKIP:],z[SKIP:])
-            sscores = get_score(st, sf)
-
-            dp,dn,dz = g.dynamic_link_prediction(data, data.va, zs, trange=data.tr_range)
-            dt, df = model.score_fn(dp[SKIP:],dn[SKIP:],dz[SKIP:])
-            dscores = get_score(dt, df)
-
-            dp,dn,dz = g.dynamic_new_link_prediction(data, data.va, zs, trange=data.tr_range)
-            dt, df = model.score_fn(dp[SKIP:],dn[SKIP:],dz[SKIP:])
-            dnscores = get_score(dt, df)
-
-            print(
-                '[%d] Loss: %0.4f  \n\tSt %s  \n\tDy %s  \n\tDyN %s' %
-                (e, trloss, fmt_score(sscores), fmt_score(dscores), fmt_score(dnscores) )
-            )
-
-            avg = (
-                sscores[0] + sscores[1] + 
-                dscores[0] + dscores[1] +
-                dnscores[0] + dnscores[1]
-            )
-            
-            if avg > best[0]:
-                best = (avg, deepcopy(model))
-                no_improvement = 0
-            else:
-                no_improvement += 1
-                if no_improvement > PATIENCE:
-                    print("Early stopping...\n")
-                    break
-
-
-    model = best[1]
-    zs = None
-    with torch.no_grad():
-        model.eval()
-        z_t = torch.cat([
-            model.encode(data.x, ei_tr[te_history:], data.tr),
-            model.encode(data.x, ei_te, data.te)
-        ], dim=0) 
-
-        zs = model.recurrent(z_t)[data.te_starts-te_history:]
-
-    # Scores all edges and matches them with name/timestamp
-    edges = []
-    for i in range(zs.size(0)):
-        idx = i + data.te_starts
-
-        ei = data.eis[idx]
-        scores = model.decode(ei[0], ei[1], zs[i])
-        names = data.format_edgelist(idx)
-
-        for i in range(len(names)):
-            edges.append(
-                (scores[i].item(), names[i])
-            )
-
-    edges.sort(key=lambda x : x[0], reverse=True)
-    for e in edges:    
-        print('%0.4f: %s' % e)
-
-
 if __name__ == '__main__':
-    data = vd.load_vgrnn('fb')
-    train(data)
+    data = vd.load_vgrnn('enron10')
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-m', '--model',
+        default='tgcn',
+        help="Determines which model used from ['(T)GCN', '(R)GAE', '(V)GRNN']"
+    )
+    parser.add_argument(
+        '-n', '--not-variational',
+        action='store_false',
+        help="Sets model to non-variational if flag used"
+    )
+    parser.add_argument(
+        '-g', '--grnn',
+        action='store_true',
+        help='Uses Graph RNN if flag used'
+    )
+    args = parser.parse_args()
+
+    mtype = args.model.lower()
+    if mtype == 'tgcn' or mtype == 't':
+        if args.grnn:
+            model = SerialTGCNGraphGRU(
+            data.x.size(1),
+            gcn_out_dim=32,
+            gru_embed_dim=16,
+            gru_hidden_units=1
+        )
+        else:    
+            model = SerialTGCN(
+                data.x.size(1),
+                gcn_out_dim=32,
+                gru_embed_dim=16,
+                gru_hidden_units=1
+            )
+    elif mtype == 'rgae' or mtype == 'r':
+        model = GAE_RNN(
+            data.x.size(1),
+            16, 32, grnn=args.grnn, variational=args.not_variational
+        )
+
+    elif mtype == 'vgrnn' or mtype == 'v':
+        model = VGRNN(
+            data.x.size(1), 16, 32
+        )
+
+    else: 
+        raise Exception("Model must be one of ['TGCN', 'RGAE', 'VGRNN']")
+
+    print(model.__class__)
+    train(model, data)

@@ -12,9 +12,11 @@ class TData(Data):
         super(TData, self).__init__(**kwargs)
 
         # Getter methods so I don't have to write this every time
-        self.tr = lambda t : self.eis[t][:, self.masks[t][0]]
         self.va = lambda t : self.eis[t][:, self.masks[t][1]]
         self.te = lambda t : self.eis[t][:, self.masks[t][2]]
+
+        # Only the last 3 time stamps are masked
+        self.tr = lambda t : self.eis[t][:, self.masks[t][0]] #if t >= self.T-3 else self.eis[t]
 
 '''
 For loading datasets from the VRGNN repo (none have features)
@@ -35,6 +37,10 @@ def load_vgrnn(dataset):
     splits = []
 
     for adj in dense_adj_list:
+        # Remove self loops
+        for i in range(adj.size(0)):
+            adj[i,i] = 0
+
         ei = dense_to_sparse(adj)[0]
         
         eis.append(ei)

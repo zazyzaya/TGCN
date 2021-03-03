@@ -1,15 +1,50 @@
-GraphRNN FB:
-742 epochs (very slow, abt 1s/epoch)
-	Final scores: 
-                Static LP:      AUC: 0.949 AP: 0.940
-                Dynamic LP:     AUC: 0.916 AP: 0.903
-                Dynamic New LP: AUC: 0.892 AP: 0.804
-(Better than VGRNN on all counts except Dyn New AP 86.3 in paper)
+Regular RNN TGCN:
+    FB 551 epochs
+        Final scores: 
+            Static LP:      AUC: 0.922 AP: 0.917
+            Dynamic LP:     AUC: 0.876 AP: 0.876
+            Dynamic New LP: AUC: 0.832 AP: 0.820
+    Enron 551 epochs
+        Final scores: 
+            Static LP:      AUC: 0.936 AP: 0.926
+            Dynamic LP:     AUC: 0.921 AP: 0.944
+            Dynamic New LP: AUC: 0.864 AP: 0.879
 
-Regular RNN FB:
-504 epochs
-	Final scores: 
-                Static LP:      AUC: 0.941 AP: 0.930
-                Dynamic LP:     AUC: 0.907 AP: 0.891
-                Dynamic New LP: AUC: 0.887 AP: 0.800
-(Still better than what's reported in VGRNN paper, but worse than G-RNN)
+GraphRNN TGCN:
+    FB 551 epochs
+        Final scores: 
+            Static LP:      AUC: 0.923 AP: 0.913
+            Dynamic LP:     AUC: 0.882 AP: 0.869
+            Dynamic New LP: AUC: 0.837 AP: 0.823
+
+My Variational TGAE no GRNN: 
+    FB 551 epochs
+        Final scores: 
+            Static LP:      AUC: 0.920 AP: 0.909
+            Dynamic LP:     AUC: 0.855 AP: 0.845
+            Dynamic New LP: AUC: 0.828 AP: 0.804
+
+My Variational TGAE:
+    FB 551 epochs
+        Final scores: 
+            Static LP:      AUC: 0.911 AP: 0.900
+            Dynamic LP:     AUC: 0.849 AP: 0.846
+            Dynamic New LP: AUC: 0.815 AP: 0.798
+    Enron10 551
+        Final scores: 
+            Static LP:      AUC: 0.955 AP: 0.945
+            Dynamic LP:     AUC: 0.921 AP: 0.927
+            Dynamic New LP: AUC: 0.847 AP: 0.842
+
+
+VGRNN (regular loss fn)
+    FB 601 epochs 
+        Final scores: 
+            Static LP:      AUC: 0.923 AP: 0.912
+            Dynamic LP:     AUC: 0.879 AP: 0.879
+            Dynamic New LP: AUC: 0.815 AP: 0.793
+    Enron10 551
+        Final scores: 
+            Static LP:      AUC: 0.976 AP: 0.969
+            Dynamic LP:     AUC: 0.920 AP: 0.920
+            Dynamic New LP: AUC: 0.829 AP: 0.838

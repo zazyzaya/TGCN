@@ -8,7 +8,7 @@ Using same GRU as VGRNN paper, where linear layers are replaced with
 graph conv layers
 '''
 class GraphGRU(nn.Module):
-    def __init__(self, in_size, hidden_size, n_layers, asl=True):
+    def __init__(self, in_size, hidden_size, n_layers=1, asl=True):
         super(GraphGRU, self).__init__()
 
         self.hidden_size = hidden_size
@@ -70,7 +70,7 @@ class GraphGRU(nn.Module):
             h_out = self.drop(h_out)
 
         # Some people save every layer of the GRU but that seems pointless to me.. 
-        # but I dunno. I'm breaking with tradition
+        # but I dunno. I'm breaking with tradition, I guess
         return h_out
 
 

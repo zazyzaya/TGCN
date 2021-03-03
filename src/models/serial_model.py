@@ -10,13 +10,16 @@ class GAE(nn.Module):
     def __init__(self, feat_dim, embed_dim=16, hidden_dim=32):
         super(GAE, self).__init__()
 
-        self.c1 = GCNConv(feat_dim, hidden_dim, add_self_loops=True)
+        self.lin = nn.Sequential(nn.Linear(feat_dim, hidden_dim), nn.ReLU())
+        self.c1 = GCNConv(hidden_dim, hidden_dim, add_self_loops=True)
         self.relu = nn.ReLU()
         self.c2 = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
         self.drop = nn.Dropout(0.25)
         self.sig = nn.Sigmoid()
 
     def forward(self, x, ei, ew=None):
+        x = self.lin(x)
+        x = self.drop(x)
         x = self.c1(x, ei, edge_weight=ew)
         x = self.relu(x)
         x = self.drop(x)
@@ -24,30 +27,6 @@ class GAE(nn.Module):
         x = self.drop(x)
 
         return x
-
-class VGAE(nn.Module):
-    def __init__(self, feat_dim, embed_dim=16, hidden_dim=32):
-        super(VGAE, self).__init__()
-
-        self.c1 = GCNConv(feat_dim, hidden_dim, add_self_loops=True)
-        self.relu = nn.ReLU()
-        self.c2 = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
-        self.drop = nn.Dropout(0.25)
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x, ei, ew=None):
-        x = self.c1(x, ei, edge_weight=ew)
-        x = self.relu(x)
-        x = self.drop(x)
-        x = self.c2(x, ei, edge_weight=ew)
-        x = self.drop(x)
-
-        return x
-
-    def _reparam(self, mean, std):
-        eps1 = torch.FloatTensor(std.size()).normal_()
-        eps1 = Variable(eps1)
-        return eps1.mul(std).add_(mean)
 
 class Recurrent(nn.Module):
     def __init__(self, feat_dim, out_dim=16, hidden_dim=32, hidden_units=1):
@@ -97,8 +76,8 @@ class SerialTGCN(nn.Module):
     Iterates through list of xs, and eis passed in (if dynamic_feats is false
     assumes xs is a single 2d tensor that doesn't change through time)
     '''
-    def forward(self, xs, eis, mask_fn, ews=None):
-        embeds = self.encode(xs, eis, mask_fn, ews)
+    def forward(self, xs, eis, mask_fn, ews=None, start_idx=0):
+        embeds = self.encode(xs, eis, mask_fn, ews, start_idx)
 
         return embeds \
             if type(self.gru) == type(None) \
@@ -108,12 +87,12 @@ class SerialTGCN(nn.Module):
     Split proceses in two to make it easier to combine embeddings with 
     different masks (ie allow train set to influence test set embeds)
     '''
-    def encode(self, xs, eis, mask_fn, ews=None):
+    def encode(self, xs, eis, mask_fn, ews=None, start_idx=0):
         embeds = []
         
         for i in range(len(eis)):    
-            ei = mask_fn(i)
-            x = xs if not self.dynamic_feats else xs[i]
+            ei = mask_fn(start_idx + i)
+            x = xs if not self.dynamic_feats else xs[start_idx + i]
 
             embeds.append(self.gcn(x, ei))
 
@@ -254,8 +233,8 @@ class SerialTGCNGraphGRU(SerialTGCN):
         ) if gru_hidden_units > 0 else None
 
     
-    def forward(self, xs, eis, mask_fn, ews=None):
-        embeds = torch.tanh(self.encode(xs, eis, mask_fn, ews))
+    def forward(self, xs, eis, mask_fn, ews=None, start_idx=0):
+        embeds = torch.tanh(self.encode(xs, eis, mask_fn, ews, start_idx))
 
         return embeds \
             if type(self.gru) == type(None) \
