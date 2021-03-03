@@ -19,7 +19,7 @@ PATIENCE = 50
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
-def train(model, data, epochs=1500):
+def train(model, data, epochs=1500, dynamic=False):
     # Test/Val on last 3 time steps
     SKIP = data.T-3
 
@@ -32,23 +32,28 @@ def train(model, data, epochs=1500):
         opt.zero_grad()
 
         # Get embedding
-        zs = model(data.x, data.eis[:SKIP], data.tr)
+        if dynamic:
+            zs = model(data.x, data.eis[:SKIP], data.all)
+        else:
+            zs = model(data.x, data.eis[:SKIP], data.tr)
         
-        # Calculate static and dynamic loss
-        p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
+        # Calculate static or dynamic loss. Note that if training dynamic
+        # the test set is the final 3 timesteps, rather than masked out edges
+        # in timesteps before. Thus, all edges in timeslices t<T-SKIP are 
+        # viewed by the model
+        if dynamic:
+            p,n,z = g.link_prediction(data, None, zs, include_tr=False, end=SKIP)
+        else:
+            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
 
-        if model.__class__ == VGRNN:
+        if not dynamic or model.__class__ == VGRNN:
             loss = model.loss_fn(p,n,z)
         
         # Other models can use more data
         else:
             dp,dn,dz = g.dynamic_link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
-            #dnp, dnn, dnz = g.dynamic_new_link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
-
-            loss = model.loss_fn(
-                #p+dp, n+dn, torch.cat([z, dz], dim=0)
-                dp, dn, dz
-            )
+            loss = model.loss_fn(p+dp, n+dn, torch.cat([z, dz], dim=0))
+            
 
         loss.backward()
         opt.step()
@@ -62,28 +67,36 @@ def train(model, data, epochs=1500):
             model.eval()
             zs = model(data.x, data.eis, data.tr)[SKIP:]
         
-            p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
-            st, sf = model.score_fn(p,n,z)
-            sscores = get_score(st, sf)
+            if not dynamic:
+                p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
+                st, sf = model.score_fn(p,n,z)
+                sscores = get_score(st, sf)
 
-            dp,dn,dz = g.dynamic_link_prediction(data, None, zs, start=SKIP)
-            dt, df = model.score_fn(dp,dn,dz)
-            dscores = get_score(dt, df)
+                print(
+                    '[%d] Loss: %0.4f  \n\tSt %s ' %
+                    (e, trloss, fmt_score(sscores) )
+                )
 
-            dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
-            dt, df = model.score_fn(dp,dn,dz)
-            dnscores = get_score(dt, df)
+                avg = sscores[1]
 
-            print(
-                '[%d] Loss: %0.4f  \n\tSt %s  \n\tDy %s  \n\tDyN %s' %
-                (e, trloss, fmt_score(sscores), fmt_score(dscores), fmt_score(dnscores) )
-            )
+            else:
+                dp,dn,dz = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+                dt, df = model.score_fn(dp,dn,dz)
+                dscores = get_score(dt, df)
 
-            avg = (
-                sscores[1] +
-                dscores[1] +
-                dnscores[1]
-            )
+                dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+                dt, df = model.score_fn(dp,dn,dz)
+                dnscores = get_score(dt, df)
+
+                print(
+                    '[%d] Loss: %0.4f  \n\tDet %s  \n\tNew %s' %
+                    (e, trloss, fmt_score(dscores), fmt_score(dnscores) )
+                )
+
+                avg = (
+                    dscores[1] +
+                    dnscores[1]
+                )
             
             if avg > best[0]:
                 best = (avg, deepcopy(model))
@@ -103,31 +116,44 @@ def train(model, data, epochs=1500):
         model.eval()
         zs = model(data.x, data.eis[SKIP:], data.tr, start_idx=SKIP)
 
-        p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
-        t, f = model.score_fn(p,n,z)
-        sscores = get_score(t, f)
+        if not dynamic:
+            p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
+            t, f = model.score_fn(p,n,z)
+            sscores = get_score(t, f)
 
-        p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP)
-        t, f = model.score_fn(p,n,z)
-        dscores = get_score(t, f)
+            print(
+                '''
+                Final scores: 
+                    Static LP:  %s
+                '''
+            % fmt_score(sscores))
 
-        p,n,z = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
-        t, f = model.score_fn(p,n,z)
-        nscores = get_score(t, f)
+            return sscores
 
-        print(
-            '''
-            Final scores: 
-                Static LP:      %s
-                Dynamic LP:     %s
-                Dynamic New LP: %s
-            ''' %
-            (fmt_score(sscores), fmt_score(dscores), fmt_score(nscores))
-        )
+        else:
+            p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+            t, f = model.score_fn(p,n,z)
+            dscores = get_score(t, f)
+
+            p,n,z = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+            t, f = model.score_fn(p,n,z)
+            nscores = get_score(t, f)
+
+            print(
+                '''
+                Final scores: 
+                    Dynamic LP:     %s
+                    Dynamic New LP: %s
+                ''' %
+                (fmt_score(dscores), fmt_score(nscores))
+            )
+
+            return {'pred': dscores, 'new': nscores}
 
 
 if __name__ == '__main__':
-    data = vd.load_vgrnn('enron10')
+    data = vd.load_vgrnn('dblp')
+    print(data.x.size(0))
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -144,6 +170,11 @@ if __name__ == '__main__':
         '-g', '--grnn',
         action='store_true',
         help='Uses Graph RNN if flag used'
+    )
+    parser.add_argument(
+        '-s', '--static',
+        action='store_false',
+        help='Sets model to train on static link prediction'
     )
     args = parser.parse_args()
 
@@ -178,4 +209,4 @@ if __name__ == '__main__':
         raise Exception("Model must be one of ['TGCN', 'RGAE', 'VGRNN']")
 
     print(model.__class__)
-    train(model, data)
+    train(model, data, dynamic=args.static)

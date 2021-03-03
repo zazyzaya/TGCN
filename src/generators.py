@@ -1,3 +1,4 @@
+from numpy.core.fromnumeric import partition
 import torch 
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 
@@ -63,12 +64,15 @@ def dynamic_new_link_prediction(data, partition_fn, zs, start=0, end=None, inclu
 
     p, n = [], []
     b = None
-    
+
+    if partition_fn == None:
+        partition_fn = lambda x : data.eis[x]
+
     end = end if end else data.T
 
     for i in range(start, end):
         # Use full adj matrix for new link pred
-        ei = data.eis[i]
+        ei = partition_fn(i)
 
         a = b
         b = to_dense_adj(ei, max_num_nodes=data.num_nodes)[0].bool()

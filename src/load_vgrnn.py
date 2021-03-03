@@ -17,6 +17,7 @@ class TData(Data):
 
         # Only the last 3 time stamps are masked
         self.tr = lambda t : self.eis[t][:, self.masks[t][0]] #if t >= self.T-3 else self.eis[t]
+        self.all = lambda t : self.eis[t]
 
 '''
 For loading datasets from the VRGNN repo (none have features)
