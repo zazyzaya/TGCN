@@ -19,10 +19,6 @@ class CyData(Data):
         self.tr_slice = lambda : self.eis[:self.te_starts]
         self.te_slice = lambda : self.eis[self.te_starts:]
 
-        # Used for negative sampling
-        self.tr_range = range(0, self.te_starts)
-        self.te_range = range(self.te_starts, self.T)
-
         # Assumes test sets are unmasked (online classification)
         self.te = lambda t : self.eis[t] 
 

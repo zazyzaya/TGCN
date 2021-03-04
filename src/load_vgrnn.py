@@ -2,7 +2,7 @@ import os
 import pickle
 
 import torch
-from torch_geometric.utils import dense_to_sparse 
+from torch_geometric.utils import dense_to_sparse, to_undirected
 from torch_geometric.data import Data
 
 from utils import edge_tvt_split
@@ -16,7 +16,7 @@ class TData(Data):
         self.te = lambda t : self.eis[t][:, self.masks[t][2]]
 
         # Only the last 3 time stamps are masked
-        self.tr = lambda t : self.eis[t][:, self.masks[t][0]] #if t >= self.T-3 else self.eis[t]
+        self.tr = lambda t : to_undirected(self.eis[t][:, self.masks[t][0]])
         self.all = lambda t : self.eis[t]
 
 '''
@@ -43,7 +43,7 @@ def load_vgrnn(dataset):
             adj[i,i] = 0
 
         ei = dense_to_sparse(adj)[0]
-        
+        ei = to_undirected(ei)
         eis.append(ei)
         splits.append(edge_tvt_split(ei))
 

@@ -19,14 +19,50 @@ class GAE(nn.Module):
 
     def forward(self, x, ei, ew=None):
         x = self.lin(x)
-        x = self.drop(x)
+        # x = self.drop(x)
         x = self.c1(x, ei, edge_weight=ew)
         x = self.relu(x)
-        x = self.drop(x)
+        # x = self.drop(x)
         x = self.c2(x, ei, edge_weight=ew)
-        x = self.drop(x)
+        # x = self.drop(x)
 
         return x
+
+
+class VGAE(nn.Module):
+    def __init__(self, x_dim, hidden_dim, embed_dim):
+        super(VGAE, self).__init__()
+
+        self.c1 = GCNConv(x_dim, hidden_dim, add_self_loops=True)
+        self.relu = nn.ReLU()
+        self.drop = nn.Dropout(0.25)
+
+        self.mean = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
+        self.std = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
+
+        self.soft = nn.Softplus()
+
+    def forward(self, x, ei, ew=None):
+        x = self.c1(x, ei, edge_weight=ew)
+        x = self.relu(x)
+        # x = self.drop(x)
+        
+        mean = self.mean(x, ei)
+        if self.eval:
+            return mean, torch.zeros((1))
+
+        std = self.soft(self.std(x, ei))
+
+        z = self._reparam(mean, std)
+        kld = 0.5 * torch.sum(torch.exp(std) + mean**2 - 1. - std)
+
+        return z, kld
+
+    def _reparam(self, mean, std):
+        eps1 = torch.FloatTensor(std.size()).normal_()
+        eps1 = Variable(eps1)
+        return eps1.mul(std).add_(mean)
+
 
 class Recurrent(nn.Module):
     def __init__(self, feat_dim, out_dim=16, hidden_dim=32, hidden_units=1):
@@ -46,37 +82,42 @@ class Recurrent(nn.Module):
     Returns (t, batch, embed) embeddings of nodes at timesteps 0-t
     '''
     def forward(self, xs):
+        xs = self.drop(xs)
         xs, _ = self.gru(xs)
-        return xs 
+        #xs = self.drop(xs)
+        return self.lin(xs)
 
 
 class SerialTGCN(nn.Module):
-    def __init__(self, feat_dim, gcn_out_dim=16, gcn_hidden_dim=32, 
-                gru_hidden_dim=32, gru_embed_dim=16, gru_hidden_units=1,
-                dynamic_feats=False):
-
+    def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
+                dynamic_feats=False, variational=False):
         super(SerialTGCN, self).__init__()
 
         self.dynamic_feats = dynamic_feats
 
         self.gcn = GAE(
-            feat_dim, embed_dim=gcn_out_dim, 
-            hidden_dim=gcn_hidden_dim
+            x_dim, embed_dim=h_dim, 
+            hidden_dim=h_dim
+        ) if not variational else VGAE(
+            x_dim, h_dim, h_dim
         )
 
         self.gru = Recurrent(
-            gcn_out_dim, out_dim=gru_embed_dim, 
-            hidden_dim=gru_hidden_dim, 
+            h_dim, out_dim=z_dim, 
+            hidden_dim=h_dim, 
             hidden_units=gru_hidden_units
         ) if gru_hidden_units > 0 else None
 
         self.sig = nn.Sigmoid()
+        self.kld = torch.zeros((1))
+        self.variational = variational
 
     '''
     Iterates through list of xs, and eis passed in (if dynamic_feats is false
     assumes xs is a single 2d tensor that doesn't change through time)
     '''
     def forward(self, xs, eis, mask_fn, ews=None, start_idx=0):
+        self.kld = torch.zeros((1))
         embeds = self.encode(xs, eis, mask_fn, ews, start_idx)
 
         return embeds \
@@ -94,8 +135,15 @@ class SerialTGCN(nn.Module):
             ei = mask_fn(start_idx + i)
             x = xs if not self.dynamic_feats else xs[start_idx + i]
 
-            embeds.append(self.gcn(x, ei))
+            if self.variational: 
+                z, kld = self.gcn(x,ei)
+                self.kld += kld
+            else:
+                z = self.gcn(x,ei)
 
+            embeds.append(z)
+
+        self.kld = self.kld.true_divide(len(eis))
         return torch.stack(embeds)
 
     def recurrent(self, embeds):
@@ -142,7 +190,7 @@ class SerialTGCN(nn.Module):
                 self.decode(f_src, f_dst, z)
             )   
 
-        return tot_loss.true_divide(T)
+        return tot_loss.true_divide(T) + self.kld
 
     '''
     Get scores for true/false embeddings to find ROC/AP scores.
@@ -215,20 +263,18 @@ class SerialTGCN(nn.Module):
 
 
 class SerialTGCNGraphGRU(SerialTGCN):
-    def __init__(self, feat_dim, gcn_out_dim=16, gcn_hidden_dim=32, 
-                gru_hidden_dim=32, gru_embed_dim=16, gru_hidden_units=1,
+    def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1,
                 dynamic_feats=False):
         
         super(SerialTGCNGraphGRU, self).__init__(
-            feat_dim, gcn_out_dim=gcn_out_dim, 
-            gcn_hidden_dim=gcn_hidden_dim, gru_hidden_dim=gru_hidden_dim, 
-            gru_embed_dim=gru_embed_dim, gru_hidden_units=gru_hidden_units,
+            x_dim, h_dim, z_dim,
+            gru_hidden_units=gru_hidden_units,
             dynamic_feats=dynamic_feats
         )
 
         # Just changing the RNN mechanism 
         self.gru = GraphGRU(
-            gcn_out_dim, gru_embed_dim, 
+            h_dim, z_dim,
             n_layers=gru_hidden_units
         ) if gru_hidden_units > 0 else None
 

@@ -16,12 +16,13 @@ class VGAE(nn.Module):
 
         self.mean = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
         self.std = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
+
         self.soft = nn.Softplus()
 
     def forward(self, x, ei, ew=None):
         x = self.c1(x, ei, edge_weight=ew)
         x = self.relu(x)
-        x = self.drop(x)
+        # x = self.drop(x)
         
         mean = self.mean(x, ei)
         if self.eval:
@@ -72,7 +73,7 @@ Basically the same, but without the variational part
 (though that could easilly be added to make it identical)
 '''
 class GAE_RNN(nn.Module):
-    def __init__(self, x_dim, z_dim, h_dim, grnn=True, variational=True, adj_loss=False):
+    def __init__(self, x_dim, h_dim, z_dim, grnn=True, variational=True, adj_loss=False):
         
         super(GAE_RNN, self).__init__()
 
@@ -84,17 +85,12 @@ class GAE_RNN(nn.Module):
             nn.ReLU()
         )
 
-        self.combiner = nn.Sequential(
-            nn.Linear(h_dim*2, h_dim),
-            nn.ReLU()
-        )
-
         self.encoder = GAE(
-            h_dim, 
+            h_dim*2, 
             embed_dim=z_dim, 
             hidden_dim=h_dim
         ) if not variational else VGAE(
-            h_dim, 
+            h_dim*2, 
             embed_dim=z_dim,
             hidden_dim=h_dim 
         )
@@ -139,7 +135,7 @@ class GAE_RNN(nn.Module):
             h = torch.zeros((x.size(0), self.h_dim))
 
         x = self.phi_x(x)
-        gcn_x = self.combiner(torch.cat([x,h], dim=1))
+        gcn_x = torch.cat([x,h], dim=1)
 
         if self.variational:
             z, kld = self.encoder(gcn_x, ei)
@@ -230,11 +226,11 @@ class GAE_RNN(nn.Module):
 
 
 class VGRNN(GAE_RNN):
-    def __init__(self, x_dim, z_dim, h_dim, adj_loss=True):
-        super(VGRNN, self).__init__(x_dim, z_dim, h_dim, grnn=True, variational=True, adj_loss=adj_loss)
+    def __init__(self, x_dim, h_dim, z_dim, adj_loss=True, pred=True):
+        super(VGRNN, self).__init__(x_dim, h_dim, z_dim, grnn=True, variational=True, adj_loss=adj_loss)
 
         self.encoder = VGAE_Prior(
-            h_dim, 
+            h_dim*2, 
             hidden_dim=h_dim,
             embed_dim=z_dim
         )
@@ -243,6 +239,8 @@ class VGRNN(GAE_RNN):
         self.prior_mean = nn.Sequential(nn.Linear(h_dim, z_dim))
         self.prior_std = nn.Sequential(nn.Linear(h_dim, z_dim), nn.Softplus())
 
+        # Whether we return priors or means
+        self.pred = pred
 
     '''
     Runs net for one timeslice
@@ -252,7 +250,7 @@ class VGRNN(GAE_RNN):
             h = torch.zeros((x.size(0), self.h_dim))
 
         x = self.phi_x(x)
-        gcn_x = self.combiner(torch.cat([x,h], dim=1))
+        gcn_x = torch.cat([x,h], dim=1)
 
         prior = self.prior(h)
         prior_std = self.prior_std(prior)
@@ -262,12 +260,9 @@ class VGRNN(GAE_RNN):
         self.kld += kld 
 
         h_in = torch.cat([x, self.phi_z(z)], dim=1)
+        h = self.recurrent.forward_once(h_in, ei, h)
 
-        if self.grnn:
-            h = self.recurrent.forward_once(h_in, ei, h)
-        else: 
-            h = self.recurrent(h_in, h)
-
+        z = prior_mean if self.pred and self.eval else z
         return h, z
 
 from torch.nn import functional as F

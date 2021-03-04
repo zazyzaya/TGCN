@@ -65,7 +65,7 @@ def train(model, data, epochs=1500, dynamic=False):
 
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis, data.tr)[SKIP:]
+            zs = model(data.x, data.eis, data.tr)[SKIP-1:]
         
             if not dynamic:
                 p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
@@ -80,11 +80,22 @@ def train(model, data, epochs=1500, dynamic=False):
                 avg = sscores[1]
 
             else:
-                dp,dn,dz = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+                # VGRNN is providing priors, which are built from the previous timestep
+                # already, thus there is no need to shift the selected ei's as the 
+                # dynamic functions do 
+                if model.__class__ == VGRNN:
+                    zs = zs[1:]
+                    dp,dn,dz = g.link_prediction(data, None, zs, start=SKIP)
+                else:
+                    dp,dn,dz = g.dynamic_link_prediction(data, None, zs, start=SKIP-1)
+                
                 dt, df = model.score_fn(dp,dn,dz)
                 dscores = get_score(dt, df)
 
-                dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+                dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP-1)
+                if model.__class__ == VGRNN:
+                    dz = zs # Again, we don't need to shift the VGRNN embeds backward
+                
                 dt, df = model.score_fn(dp,dn,dz)
                 dnscores = get_score(dt, df)
 
@@ -114,8 +125,6 @@ def train(model, data, epochs=1500, dynamic=False):
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs = model(data.x, data.eis[SKIP:], data.tr, start_idx=SKIP)
-
         if not dynamic:
             p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
             t, f = model.score_fn(p,n,z)
@@ -131,11 +140,18 @@ def train(model, data, epochs=1500, dynamic=False):
             return sscores
 
         else:
-            p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP)
+            if model.__class__ == VGRNN:
+                p,n,z = g.link_prediction(data, None, zs, start=SKIP)
+            else:                
+                p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP-1)
+        
             t, f = model.score_fn(p,n,z)
             dscores = get_score(t, f)
 
             p,n,z = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
+            if model.__class__ == VGRNN:
+                z = zs 
+            
             t, f = model.score_fn(p,n,z)
             nscores = get_score(t, f)
 
@@ -176,33 +192,27 @@ if __name__ == '__main__':
         action='store_false',
         help='Sets model to train on static link prediction'
     )
-    args = parser.parse_args()
+    args = parser.parse_args(['-m', 'r'])
 
     mtype = args.model.lower()
     if mtype == 'tgcn' or mtype == 't':
         if args.grnn:
             model = SerialTGCNGraphGRU(
-            data.x.size(1),
-            gcn_out_dim=32,
-            gru_embed_dim=16,
-            gru_hidden_units=1
+            data.x.size(1), 32, 16        
         )
         else:    
             model = SerialTGCN(
-                data.x.size(1),
-                gcn_out_dim=32,
-                gru_embed_dim=16,
-                gru_hidden_units=1
+                data.x.size(1), 32, 16, variational=args.not_variational
             )
     elif mtype == 'rgae' or mtype == 'r':
         model = GAE_RNN(
-            data.x.size(1),
-            16, 32, grnn=args.grnn, variational=args.not_variational
+            data.x.size(1), 32, 16,
+            grnn=args.grnn, variational=args.not_variational
         )
 
     elif mtype == 'vgrnn' or mtype == 'v':
         model = VGRNN(
-            data.x.size(1), 16, 32
+            data.x.size(1), 32, 16, pred=args.static
         )
 
     else: 
