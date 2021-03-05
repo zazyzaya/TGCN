@@ -14,13 +14,10 @@ class CyData(Data):
         # Getter methods so I don't have to write this every time
         self.tr = lambda t : self.eis[t][:, self.masks[t]] 
         self.va = lambda t : self.eis[t][:, ~self.masks[t]]
-        
-        # Return time before or after train/test split
-        self.tr_slice = lambda : self.eis[:self.te_starts]
-        self.te_slice = lambda : self.eis[self.te_starts:]
 
         # Assumes test sets are unmasked (online classification)
         self.te = lambda t : self.eis[t] 
+        self.all = self.te # For readability
 
 
     '''
@@ -35,7 +32,10 @@ class CyData(Data):
             dst = self.node_map[ei[1, i]]
             ts = self.ts[t][i]
             
-            edges.append('%s --> %s  @\t%s' % (src, dst, ts))
+            arrow = '-->' if 'efs' not in self \
+                    else '-( %s )->' % self.efs[t][i]
+
+            edges.append('%s %s %s\t@ %s' % (src, arrow, dst, ts))
 
         return edges
 
@@ -44,7 +44,7 @@ class CyData(Data):
 DATE_OF_EVIL_PICO = "2019-07-19T18:07:59.460425Z"
 DATE_OF_EVIL_LANL = 150885
 
-def pico_file_loader(fname, keep=['client', 'ts', 'service']):
+def pico_file_loader(fname, keep=['client', 'ts', 'service', 'success', 'id.orig_h']):
     # Not really in the right schema to just use json.loads on the 
     # whole thing. Each line is its own json object
     with open(fname, 'r') as f:
@@ -94,12 +94,36 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
     edge_times = [] 
 
     eis = []
+    
     efs = []
+    ef = []
 
-    timer=0
+    # Kind of cheating because DNS changes these, but if possible
+    # when an admin account does something, it's helpful to know
+    # what computer it was from for comparison to the Red Log 
+    ip_map = {
+        '27': 'RND-WIN10-2',
+        '29': 'RND-WIN10-1',
+        '30': 'HR-WIN7-2',
+        '152': 'HR-WIN7-1',
+        '160': 'SUPERSECRETXP',
+        '5': 'CORP-DC',
+        '100': 'PFSENSE'
+    }
 
     for i in tqdm(range(len(logs))):
         l = logs[i]
+
+        # First parse out client 
+        client = l['client'].split('/')[0] # Don't really care about instance 
+        client = client.upper()
+
+        # Update ip map if needed (because going sequentially DNS updates
+        # can happen as we see them)
+        ip = l['id.orig_h'].split('.')[-1]
+        if '$' in client and ip_map[ip] != client.replace('$', ''):
+            ip_map[ip] = client.replace('$', '')
+
 
         if tr_set and l['ts'] == DATE_OF_EVIL_PICO:
             tr_set = False 
@@ -112,9 +136,20 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
         if skip:
             continue
 
-        # First parse out client 
-        client = l['client'].split('/')[0] # Don't really care about instance 
-        client = client.upper()
+        
+        
+
+    
+        if 'ADMIN' in client:
+            client = client.replace('ADMINISTRATOR', 'ADMIN') # Shorten a bit
+            
+            try:
+                maybe_comp = ip_map[ip]
+            except:
+                maybe_comp = 'UNK'
+
+            client += '@' + maybe_comp
+
         
         if client in cl_to_id:
             src.append(cl_to_id[client])
@@ -146,6 +181,7 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
             cl_cnt += 1
 
         ts.append(l['ts'])
+        ef.append('succ' if l['success'] else 'fail')
 
         # Create new partition for next set of edges
         if (i+1) % delta == 0:
@@ -156,10 +192,13 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
             edge_times.append(ts)
             ts = []
 
-    return make_data_obj(eis, cl_to_id, tr_set_partition_end, ts=edge_times)
+            efs.append(ef)
+            ef = []
+
+    return make_data_obj(eis, cl_to_id, tr_set_partition_end, edge_times, efs=efs)
 
 
-def make_data_obj(eis, cl_to_id, tr_set_partition_end, **kwargs):
+def make_data_obj(eis, cl_to_id, tr_set_partition_end, ts, **kwargs):
     cl_cnt = max(cl_to_id.values())
     
     node_map = [None] * (max(cl_to_id.values()) + 1)
@@ -190,6 +229,7 @@ def make_data_obj(eis, cl_to_id, tr_set_partition_end, **kwargs):
         num_nodes=x.size(0),
         T=len(eis),
         node_map=node_map,
+        ts=ts,
         **kwargs
     )
     return data
