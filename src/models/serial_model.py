@@ -45,7 +45,7 @@ class VGAE(nn.Module):
     def forward(self, x, ei, ew=None):
         x = self.c1(x, ei, edge_weight=ew)
         x = self.relu(x)
-        # x = self.drop(x)
+        x = self.drop(x)
         
         mean = self.mean(x, ei)
         if self.eval:
@@ -81,11 +81,14 @@ class Recurrent(nn.Module):
     Expects (t, batch, feats) input
     Returns (t, batch, embed) embeddings of nodes at timesteps 0-t
     '''
-    def forward(self, xs):
+    def forward(self, xs, include_h=False):
         xs = self.drop(xs)
         xs, _ = self.gru(xs)
-        #xs = self.drop(xs)
-        return self.lin(xs)
+        
+        if not include_h:
+            return self.lin(xs)
+        else:
+            return self.lin(xs), xs
 
 
 class SerialTGCN(nn.Module):

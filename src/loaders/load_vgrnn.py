@@ -5,7 +5,7 @@ import torch
 from torch_geometric.utils import dense_to_sparse, to_undirected
 from torch_geometric.data import Data
 
-from utils import edge_tvt_split
+from .load_utils import edge_tvt_split
 
 class TData(Data):
     def __init__(self, **kwargs):

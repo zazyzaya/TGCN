@@ -17,7 +17,8 @@ from utils import fast_negative_sampling
 Simplest one. Just returns eis and random negative sample
 for each time step AT each timestep
 '''
-def link_prediction(data, partition_fn, zs, start=0, end=None, include_tr=True, batched=False):
+def link_prediction(data, partition_fn, zs, start=0, end=None, 
+                    include_tr=True, batched=False, nratio=1):
     if batched:
         raise NotImplementedError("Sorry, batching is a TODO")
 
@@ -35,7 +36,7 @@ def link_prediction(data, partition_fn, zs, start=0, end=None, include_tr=True, 
         if include_tr:
             ei = torch.cat([ei, data.tr(t)], dim=1)
 
-        neg = fast_negative_sampling(ei, tp.size(1), data.num_nodes)
+        neg = fast_negative_sampling(ei, int(tp.size(1)*nratio), data.num_nodes)
         negs.append(neg)
 
     return [partition_fn(i) for i in range(start, end)], negs, zs 
@@ -44,9 +45,13 @@ def link_prediction(data, partition_fn, zs, start=0, end=None, include_tr=True, 
 Using embeddings from timestep t, predict links in timestep t+1
 same as link prediction, just offset edge lists and embeddings by -1
 '''
-def dynamic_link_prediction(data, partition_fn, zs, start=0, end=None, include_tr=True, batched=False):
+def dynamic_link_prediction(data, partition_fn, zs, start=0, end=None, 
+                            include_tr=True, batched=False, nratio=1):
     # Uses every edge in the next snap shot, so no partition fn needed
-    p, n, z = link_prediction(data, partition_fn, zs, start, end, include_tr, batched)
+    p, n, z = link_prediction(
+        data, partition_fn, zs, start, end, 
+        include_tr, batched, nratio
+    )
 
     p = p[1:]
     n = n[1:]
@@ -58,7 +63,8 @@ def dynamic_link_prediction(data, partition_fn, zs, start=0, end=None, include_t
 Predict links that weren't present in prev batch appearing in next batch 
 (Compute heavy. May want to precalculate this/only run on test set)
 '''
-def dynamic_new_link_prediction(data, partition_fn, zs, start=0, end=None, include_tr=True, batched=False):
+def dynamic_new_link_prediction(data, partition_fn, zs, start=0, end=None, 
+                                include_tr=True, batched=False):
     if batched:
         raise NotImplementedError("Sorry, batching is a TODO")
 

@@ -4,7 +4,7 @@ import torch
 from torch.optim import Adam
 
 import generators as g
-import load_cyber as lc 
+import loaders.load_cyber as lc 
 from models.serial_model import SerialTGCN
 from utils import get_score
 

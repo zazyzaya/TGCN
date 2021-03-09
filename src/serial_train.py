@@ -6,13 +6,15 @@ import torch
 from torch.optim import Adam
 
 import generators as g
-import load_vgrnn as vd
-import load_cyber as cd 
+import loaders.load_vgrnn as vd
 from models.serial_model import SerialTGCN, SerialTGCNGraphGRU
 from models.vgrnn_like import GAE_RNN, VGRNN
+from models.tgcn_with_prior import PriorSerialTGCN
 from utils import get_score
 
 torch.set_num_threads(16)
+
+uses_priors = [VGRNN, PriorSerialTGCN]
 
 LR = 0.01
 PATIENCE = 50
@@ -34,26 +36,23 @@ def train(model, data, epochs=1500, dynamic=False):
         # Get embedding
         if dynamic:
             zs = model(data.x, data.eis[:SKIP], data.all)
-        else:
-            zs = model(data.x, data.eis[:SKIP], data.tr)
-        
-        # Calculate static or dynamic loss. Note that if training dynamic
-        # the test set is the final 3 timesteps, rather than masked out edges
-        # in timesteps before. Thus, all edges in timeslices t<T-SKIP are 
-        # viewed by the model
-        if dynamic:
             p,n,z = g.link_prediction(data, None, zs, include_tr=False, end=SKIP)
         else:
-            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
+            zs = model(data.x, data.eis[:SKIP], data.tr)
+            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)        
 
-        if not dynamic or model.__class__ == VGRNN:
+        if not dynamic:
             loss = model.loss_fn(p,n,z)
         
-        # Other models can use more data
-        else:
-            dp,dn,dz = g.dynamic_link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)
-            loss = model.loss_fn(p+dp, n+dn, torch.cat([z, dz], dim=0))
+        elif dynamic and model.__class__ not in uses_priors:
+            dp,dn,dz = g.dynamic_link_prediction(data, data.all, zs, include_tr=False, end=SKIP)
             
+            #loss = model.loss_fn(p+dp, n+dn, torch.cat([z, dz]))        
+            loss = model.loss_fn(dp, dn, dz)
+
+        else:
+            loss = model.loss_fn(p,n,z)
+        
 
         loss.backward()
         opt.step()
@@ -83,7 +82,7 @@ def train(model, data, epochs=1500, dynamic=False):
                 # VGRNN is providing priors, which are built from the previous timestep
                 # already, thus there is no need to shift the selected ei's as the 
                 # dynamic functions do 
-                if model.__class__ == VGRNN:
+                if model.__class__ in uses_priors:
                     zs = zs[1:]
                     dp,dn,dz = g.link_prediction(data, None, zs, start=SKIP)
                 else:
@@ -93,7 +92,7 @@ def train(model, data, epochs=1500, dynamic=False):
                 dscores = get_score(dt, df)
 
                 dp,dn,dz = g.dynamic_new_link_prediction(data, None, zs, start=SKIP-1)
-                if model.__class__ == VGRNN:
+                if model.__class__ in uses_priors:
                     dz = zs # Again, we don't need to shift the VGRNN embeds backward
                 
                 dt, df = model.score_fn(dp,dn,dz)
@@ -105,8 +104,8 @@ def train(model, data, epochs=1500, dynamic=False):
                 )
 
                 avg = (
-                    dscores[1] +
-                    dnscores[1]
+                    dscores[0] + dscores[1] +
+                    dnscores[0] + dnscores[1]
                 )
             
             if avg > best[0]:
@@ -140,7 +139,7 @@ def train(model, data, epochs=1500, dynamic=False):
             return sscores
 
         else:
-            if model.__class__ == VGRNN:
+            if model.__class__ in uses_priors:
                 p,n,z = g.link_prediction(data, None, zs, start=SKIP)
             else:                
                 p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP-1)
@@ -149,7 +148,7 @@ def train(model, data, epochs=1500, dynamic=False):
             dscores = get_score(t, f)
 
             p,n,z = g.dynamic_new_link_prediction(data, None, zs, start=SKIP)
-            if model.__class__ == VGRNN:
+            if model.__class__ in uses_priors:
                 z = zs 
             
             t, f = model.score_fn(p,n,z)
@@ -168,14 +167,14 @@ def train(model, data, epochs=1500, dynamic=False):
 
 
 if __name__ == '__main__':
-    data = vd.load_vgrnn('dblp')
+    data = vd.load_vgrnn('fb')
     print(data.x.size(0))
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-m', '--model',
         default='tgcn',
-        help="Determines which model used from ['(T)GCN', '(R)GAE', '(V)GRNN']"
+        help="Determines which model used from ['(T)GCN', '(R)GAE', '(V)GRNN', (P)TGCN]"
     )
     parser.add_argument(
         '-n', '--not-variational',
@@ -192,7 +191,7 @@ if __name__ == '__main__':
         action='store_false',
         help='Sets model to train on static link prediction'
     )
-    args = parser.parse_args(['-m', 'r'])
+    args = parser.parse_args()
 
     mtype = args.model.lower()
     if mtype == 'tgcn' or mtype == 't':
@@ -215,8 +214,13 @@ if __name__ == '__main__':
             data.x.size(1), 32, 16, pred=args.static
         )
 
+    elif mtype == 'ptgcn' or mtype == 'p':
+        model = PriorSerialTGCN(
+            data.x.size(1), 32, 16, pred=args.static
+        )
+
     else: 
-        raise Exception("Model must be one of ['TGCN', 'RGAE', 'VGRNN']")
+        raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
 
     print(model.__class__)
     train(model, data, dynamic=args.static)

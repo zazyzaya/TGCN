@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch 
 from torch_geometric.data import Data
 
-from utils import edge_tv_split
+from .load_utils import edge_tv_split
 
 class CyData(Data):
     def __init__(self, **kwargs):
