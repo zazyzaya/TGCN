@@ -1,10 +1,11 @@
 import torch 
 
-from torch import nn 
+from torch import full, nn 
 from torch.autograd import Variable
 from torch_geometric.nn import GCNConv
 
 from .gcn_gru import GraphGRU
+from .loss_fns import full_adj_nll
 
 class GAE(nn.Module):
     def __init__(self, feat_dim, embed_dim=16, hidden_dim=32):
@@ -93,7 +94,7 @@ class Recurrent(nn.Module):
 
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
-                dynamic_feats=False, variational=False):
+                dynamic_feats=False, variational=False, dense_loss=False):
         super(SerialTGCN, self).__init__()
 
         self.dynamic_feats = dynamic_feats
@@ -114,6 +115,10 @@ class SerialTGCN(nn.Module):
         self.sig = nn.Sigmoid()
         self.kld = torch.zeros((1))
         self.variational = variational
+
+        self.dense_loss=dense_loss
+        msg = "dense" if self.dense_loss else 'sparse'
+        print("Using %s loss" % msg)
 
     '''
     Iterates through list of xs, and eis passed in (if dynamic_feats is false
@@ -188,10 +193,13 @@ class SerialTGCN(nn.Module):
             f_src, f_dst = fs[i]
             z = zs[i]
 
-            tot_loss += self.calc_loss(
-                self.decode(t_src, t_dst, z),
-                self.decode(f_src, f_dst, z)
-            )   
+            if not self.dense_loss:
+                tot_loss += self.calc_loss(
+                    self.decode(t_src, t_dst, z),
+                    self.decode(f_src, f_dst, z)
+                )   
+            else:
+                tot_loss = full_adj_nll(ts[i], z)
 
         return tot_loss.true_divide(T) + self.kld
 

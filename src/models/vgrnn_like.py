@@ -5,6 +5,7 @@ from torch_geometric.nn import GCNConv
 
 from .serial_model import GAE
 from .gcn_gru import GraphGRU
+from .loss_fns import full_adj_nll
 
 class VGAE(nn.Module):
     def __init__(self, x_dim, hidden_dim, embed_dim):
@@ -61,6 +62,20 @@ class VGAE_Prior(VGAE):
     Copied straight from the VGRNN code
     '''
     def _kld_gauss(self, mean_1, std_1, mean_2, std_2):
+        '''
+        # Only take KLD for nodes that exist in this timeslice 
+        # (Assumes nodes with higher IDs appear later in the timeline
+        # and that once a node appears it never dissapears. A lofty assumption,
+        # I know, but this is what the authors did and it seems to work)
+
+        (makes no difference, just slows down training so removed)
+
+        mean_1 = mean_1[:num_nodes]
+        mean_2 = mean_2[:num_nodes]
+        std_1 = std_1[:num_nodes]
+        std_2 = std_2[:num_nodes]
+        '''
+
         num_nodes = mean_1.size()[0]
         kld_element =  (2 * torch.log(std_2 + self.eps) - 2 * torch.log(std_1 + self.eps) +
                         (torch.pow(std_1 + self.eps ,2) + torch.pow(mean_1 - mean_2, 2)) / 
@@ -185,12 +200,11 @@ class GAE_RNN(nn.Module):
         T = len(ts)
 
         for i in range(T):
-            
-            t_src, t_dst = ts[i]
-            f_src, f_dst = fs[i]
-            z = zs[i]
-
             if not self.adj_loss:
+                t_src, t_dst = ts[i]
+                f_src, f_dst = fs[i]
+                z = zs[i]
+
                 tot_loss += self.calc_loss(
                     self.decode(t_src, t_dst, z),
                     self.decode(f_src, f_dst, z)
@@ -239,7 +253,7 @@ class VGRNN(GAE_RNN):
         self.prior_mean = nn.Sequential(nn.Linear(h_dim, z_dim))
         self.prior_std = nn.Sequential(nn.Linear(h_dim, z_dim), nn.Softplus())
 
-        # Whether we return priors or means
+        # Whether we return priors or means during eval
         self.pred = pred
 
     '''
@@ -262,24 +276,10 @@ class VGRNN(GAE_RNN):
         h_in = torch.cat([x, self.phi_z(z)], dim=1)
         h = self.recurrent.forward_once(h_in, ei, h)
 
+        # Regardless of if self.pred == True Z is means if self.eval == True
         z = prior_mean if self.pred and self.eval else z
         return h, z
 
-from torch.nn import functional as F
-from torch_geometric.utils import to_dense_adj
-def full_adj_nll(ei, z):
-    A = to_dense_adj(ei, max_num_nodes=z.size(0))[0]
-    A_tilde = z@z.T
 
-    temp_size = A.size(0)
-    temp_sum = A.sum()
-    posw = float(temp_size * temp_size - temp_sum) / temp_sum
-    norm = temp_size * temp_size / float((temp_size * temp_size - temp_sum) * 2)
-    nll_loss_mat = F.binary_cross_entropy_with_logits(input=A_tilde
-                                                        , target=A
-                                                        , pos_weight=posw
-                                                        , reduction='none')
-    nll_loss = -1 * norm * torch.mean(nll_loss_mat, dim=[0,1])
-    return - nll_loss
 
 

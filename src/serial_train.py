@@ -1,6 +1,5 @@
 from copy import deepcopy
 import argparse
-from re import M
 
 import torch 
 from torch.optim import Adam
@@ -124,6 +123,8 @@ def train(model, data, epochs=1500, dynamic=False):
     model = best[1]
     with torch.no_grad():
         model.eval()
+        zs = model(data.x, data.eis, data.tr)[SKIP-1:]
+
         if not dynamic:
             p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
             t, f = model.score_fn(p,n,z)
@@ -140,6 +141,7 @@ def train(model, data, epochs=1500, dynamic=False):
 
         else:
             if model.__class__ in uses_priors:
+                zs = zs[1:]
                 p,n,z = g.link_prediction(data, None, zs, start=SKIP)
             else:                
                 p,n,z = g.dynamic_link_prediction(data, None, zs, start=SKIP-1)
@@ -167,7 +169,7 @@ def train(model, data, epochs=1500, dynamic=False):
 
 
 if __name__ == '__main__':
-    data = vd.load_vgrnn('fb')
+    data = vd.load_vgrnn('dblp')
     print(data.x.size(0))
     
     parser = argparse.ArgumentParser()
@@ -191,6 +193,11 @@ if __name__ == '__main__':
         action='store_false',
         help='Sets model to train on static link prediction'
     )
+    parser.add_argument(
+        '-l', '--sparse-loss',
+        action='store_false',
+        help='Uses the sparse loss function for VGRNN'
+    )
     args = parser.parse_args()
 
     mtype = args.model.lower()
@@ -201,7 +208,9 @@ if __name__ == '__main__':
         )
         else:    
             model = SerialTGCN(
-                data.x.size(1), 32, 16, variational=args.not_variational
+                data.x.size(1), 32, 16, 
+                variational=args.not_variational,
+                #dense_loss=args.sparse_loss
             )
     elif mtype == 'rgae' or mtype == 'r':
         model = GAE_RNN(
@@ -211,7 +220,8 @@ if __name__ == '__main__':
 
     elif mtype == 'vgrnn' or mtype == 'v':
         model = VGRNN(
-            data.x.size(1), 32, 16, pred=args.static
+            data.x.size(1), 32, 16, pred=args.static,
+            adj_loss=args.sparse_loss
         )
 
     elif mtype == 'ptgcn' or mtype == 'p':

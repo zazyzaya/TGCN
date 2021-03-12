@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import torch
 from torch_geometric.data import Data 
+from tqdm import tqdm 
 
 from .load_utils import edge_tv_split
 
@@ -11,11 +12,12 @@ class CICData(Data):
         super(CICData, self).__init__(**kwargs)
 
         # Tr/val only applies to t < te_starts
-        self.tr = lambda t : self.eis[t][: self.masks[t][0]]
-        self.va = lambda t : self.eis[t][: self.masks[t][1]]
+        self.tr = lambda t : self.eis[t][:, self.masks[t][0]]
+        self.va = lambda t : self.eis[t][:, self.masks[t][1]]
         
         # Test set is just unseen time slices
         self.te = lambda t : self.eis[t] 
+        self.all = self.te # For readability
 
 
 HOME = '/mnt/raid0_24TB/datasets/cic/iscxdownloads.cs.unb.ca/iscxdownloads/CIC-IDS-2017/TrafficLabelling/'
@@ -80,24 +82,28 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
     tss = []
 
     node_map = {}
-    nid = 0
+    nid = [0] # To pass by reference
 
+    ticks = 0
     masks = []
 
     te_start_marked = False
+    prog = tqdm(desc='Records parsed')
 
     # Helper functions
     isnan = lambda x : x != x
-    def get_or_add(k, id):
+    fmt_time = lambda x : x[9:]
+    def get_or_add(k):
         if k in node_map:
             return node_map[k]
         
-        node_map[k] = nid
-        nid += 1
-        return nid-1
+        node_map[k] = nid[0]
+        nid[0] += 1
+        return nid[0]-1
 
-    curtime = df[0]['ts']
-    src, dst = None 
+    curtime = fmt_time(df['ts'][0])
+    src, dst = None, None
+
     # Note: for some reason the frame is larger
     # than the number of nodes, ending at idx 170365 (for H0)
     i=0
@@ -118,24 +124,27 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         # Hacky way of doing this right now. We assume time
         # deltas are just 1 min (smallest time inc) so any 
         # change is indicitive of a new slice
-        ts = df['ts'][i]
+        ts = fmt_time(df['ts'][i])
         if curtime != ts:
             curtime = ts 
+            ticks += 1
 
-            eis.append(torch.tensor(ei))
-            ei = [[],[]]
-            masks.append(edge_tv_split(eis[-1]))
+            if ticks % delta == 0:
+                eis.append(torch.tensor(ei))
+                ei = [[],[]]
+                masks.append(edge_tv_split(eis[-1]))
 
-            times.append(tss)
-            tss = []
+                times.append(tss)
+                tss = []
 
-            labels.append(torch.tensor(label_t))
-            label_t = []
+                labels.append(torch.tensor(label_t))
+                label_t = []
 
         # Every point up until now is clean data, 
         # after may be anomalous
         if ts == te_starts and not te_start_marked:
             te_starts_idx = len(eis)
+            te_start_marked = True
 
         src = get_or_add(src)
         dst = get_or_add(dst)
@@ -147,6 +156,7 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         label_t.append(y)
 
         i+=1
+        prog.update(1)
     
     num_nodes = len(node_map)
     return CICData(
@@ -155,5 +165,6 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         eis=eis,
         te_starts=te_starts_idx,
         node_map=node_map,
-        masks=masks
+        masks=masks,
+        T=len(eis)
     )

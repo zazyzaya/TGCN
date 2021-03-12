@@ -1,0 +1,30 @@
+Static LP 64 hidden, 128 embed, delta=3
+LR of catted node embeddings 
+
+              precision    recall  f1-score   support
+
+           0       0.92      1.00      0.96      2167
+           1       1.00      1.00      1.00     75848
+
+    accuracy                           1.00     78015
+   macro avg       0.96      1.00      0.98     78015
+weighted avg       1.00      1.00      1.00     78015
+
+   PP    PN
+TP 2167 | 0
+TN 187  | 75661
+
+Dynamic LP 64 hidden, 128 embed, delta=3
+LR of catted node embeddings
+              precision    recall  f1-score   support
+
+           0       0.98      1.00      0.99      2167
+           1       1.00      1.00      1.00     75848
+
+    accuracy                           1.00     78015
+   macro avg       0.99      1.00      1.00     78015
+weighted avg       1.00      1.00      1.00     78015
+
+   PP    PN
+TP 2167 | 0
+TN 38   | 75810
