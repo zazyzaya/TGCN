@@ -82,14 +82,17 @@ class Recurrent(nn.Module):
     Expects (t, batch, feats) input
     Returns (t, batch, embed) embeddings of nodes at timesteps 0-t
     '''
-    def forward(self, xs, include_h=False):
+    def forward(self, xs, h_0, include_h=False):
         xs = self.drop(xs)
-        xs, _ = self.gru(xs)
+        if type(h_0) != type(None):
+            xs, h = self.gru(xs, h_0)
+        else:
+            xs, h = self.gru(xs)
         
         if not include_h:
             return self.lin(xs)
         else:
-            return self.lin(xs), xs
+            return self.lin(xs), h
 
 
 class SerialTGCN(nn.Module):
@@ -124,13 +127,14 @@ class SerialTGCN(nn.Module):
     Iterates through list of xs, and eis passed in (if dynamic_feats is false
     assumes xs is a single 2d tensor that doesn't change through time)
     '''
-    def forward(self, xs, eis, mask_fn, ews=None, start_idx=0):
+    def forward(self, xs, eis, mask_fn, ews=None, start_idx=0, 
+                include_h=False, h_0=None):
         self.kld = torch.zeros((1))
         embeds = self.encode(xs, eis, mask_fn, ews, start_idx)
 
         return embeds \
             if type(self.gru) == type(None) \
-            else self.gru(torch.tanh(embeds))
+            else self.gru(torch.tanh(embeds), h_0, include_h=include_h,)
 
     '''
     Split proceses in two to make it easier to combine embeddings with 

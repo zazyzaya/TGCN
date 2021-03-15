@@ -14,7 +14,7 @@ from utils import get_score
 
 torch.set_num_threads(16)
 
-LR = 0.01
+LR = 0.001
 PATIENCE = 25
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
@@ -24,7 +24,7 @@ Given a list of z's and ei's return a stack of
 [src_embed + dst_embed]
 For each time slice combined
 '''
-def cat_embeds(z, ei, decode='cat'):
+def cat_embeds(z, ei, decode='dot'):
     if decode=='dot':
         catted = [
             torch.sigmoid(
@@ -62,7 +62,8 @@ def fmt_cm(cm):
     print("TN %d%s | %d" % (cm[1][0], ' '*pad2, cm[1][1]))
 
 
-def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_nratio=1):
+def train(model, data, epochs=1500, nratio=1, dynamic=True, 
+        min_epochs=100, lr_nratio=1, single_prior=False):
     TE_STARTS = data.te_starts
 
     opt = Adam(model.parameters(), lr=LR)
@@ -91,9 +92,15 @@ def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_n
         
         # VGRNN uses dense loss, so no need to do neg sampling or timeshift
         else:
-            p = data.eis[:TE_STARTS]
-            n = None
-            z = zs 
+            if model.adj_loss:
+                p = data.eis[:TE_STARTS]
+                n = None
+                z = zs 
+            else:
+                p,n,z = g.link_prediction(
+                    data, data.tr, zs, end=TE_STARTS, 
+                    nratio=nratio, include_tr=False
+                )
 
         loss = model.loss_fn(p,n,z)
         loss.backward()
@@ -167,9 +174,20 @@ def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_n
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs_all = model(data.x, data.eis, data.all)
+        if model.__class__ == SerialTGCN:
+            zs_all, h0 = model(data.x, data.eis[:TE_STARTS], data.all, include_h=True)
+        else:
+            zs_all = model(data.x, data.eis[:TE_STARTS], data.all)
 
-    zs = zs_all[TE_STARTS-1:]
+        # Generate all future embeds using prior from last normal state
+        if single_prior:
+            zs = torch.cat([
+                model(data.x, [data.eis[i]], data.all, h_0=h0, start_idx=i)
+                for i in range(TE_STARTS-1, data.T)
+            ], dim=0)
+        else:
+            zs = model(data.x, data.eis, data.all)[TE_STARTS-1:]
+    
     if dynamic:
         if model.__class__ == VGRNN:
             zs = zs[1:]
@@ -187,11 +205,12 @@ def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_n
             data, data.all, zs_all, end=TE_STARTS, nratio=lr_nratio
         )
 
-    # Use logistic regression to determine edge likelihood
+    # Use logistic regression to determine edge classification given likelihood
     # Train on known pos and neg edges from training set time slices
     lr = LogisticRegression(max_iter=1000)
     X_pos = cat_embeds(z, p)
     X_neg = cat_embeds(z, n)
+
     X_tr = torch.cat([X_pos, X_neg], dim=0)
     y_tr = torch.zeros(X_pos.size(0)+X_neg.size(0))
     y_tr[:X_pos.size(0)] = 1
@@ -212,6 +231,17 @@ def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_n
     X_te = cat_embeds(zs, data.eis[TE_STARTS:])
     y_hat = lr.predict(X_te)
 
+    idx = 0
+    for i in range(TE_STARTS, data.T):
+        ne = data.eis[i].size(1)
+        yt = y[idx:idx+ne]
+        y_hatt = y_hat[idx:idx+ne]
+
+        print(data.times[i])
+        fmt_cm(confusion_matrix(yt, y_hatt))
+        print()
+        idx += ne
+
     cm = confusion_matrix(y, y_hat)
     cr = classification_report(y, y_hat)
 
@@ -222,9 +252,17 @@ def train(model, data, epochs=1500, nratio=1, dynamic=True, min_epochs=100, lr_n
 
 if __name__ == '__main__':
     pred=True
-    data = lc.load_cic(delta=1)
+    data = lc.load_cic(delta=2)
 
-    #m = VGRNN(data.x.size(1), 64, 32, pred=pred)
-    m = SerialTGCN(data.x.size(1), 32, 16, variational=True)
+    m = VGRNN(data.x.size(1), 32, 16, pred=pred, adj_loss=False)
+    '''
+    m = SerialTGCN(
+        data.x.size(1), 128, 64, 
+        variational=True, gru_hidden_units=2
+    )
+    '''
 
-    train(m, data, dynamic=pred, nratio=1, min_epochs=50, lr_nratio=5)
+    train(
+        m, data, dynamic=pred, nratio=1, 
+        min_epochs=50, lr_nratio=5, single_prior=False
+    )

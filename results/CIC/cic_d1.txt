@@ -1,0 +1,71 @@
+Last clean prior
+Static LP  
+
+              precision    recall  f1-score   support
+
+           0       0.11      1.00      0.21      2167
+           1       1.00      0.78      0.88     76464
+
+    accuracy                           0.79     78631
+   macro avg       0.56      0.89      0.54     78631
+weighted avg       0.98      0.79      0.86     78631
+
+   PP      PN
+TP 2167  | 0
+TN 16689 | 59775
+
+AUC: 0.5747 AP: 0.9848
+
+
+Dynamic priors
+Static LP
+              precision    recall  f1-score   support
+
+           0       0.05      0.89      0.10      2167
+           1       0.99      0.54      0.70     76464
+
+    accuracy                           0.55     78631
+   macro avg       0.52      0.72      0.40     78631
+weighted avg       0.97      0.55      0.68     78631
+
+   PP      PN
+TP 1934  | 233
+TN 35126 | 41338
+
+AUC: 0.4815 AP: 0.9799
+
+
+Last clean prior 
+Dynamic LP 
+              precision    recall  f1-score   support
+
+           0       0.01      0.03      0.01      2167
+           1       0.97      0.86      0.91     76464
+
+    accuracy                           0.83     78631
+   macro avg       0.49      0.45      0.46     78631
+weighted avg       0.94      0.83      0.89     78631
+
+   PP      PN
+TP 71    | 2096
+TN 10896 | 65568
+
+AUC: 0.5344 AP: 0.9828
+
+
+Dynamic priors
+Dynamic LP 
+              precision    recall  f1-score   support
+
+           0       0.03      0.41      0.05      2167
+           1       0.97      0.62      0.76     76464
+
+    accuracy                           0.61     78631
+   macro avg       0.50      0.51      0.41     78631
+weighted avg       0.95      0.61      0.74     78631
+
+   PP      PN
+TP 886   | 1281
+TN 29182 | 47282
+
+AUC: 0.3320 AP: 0.9646

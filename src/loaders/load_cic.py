@@ -78,9 +78,6 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
     eis = []
     ei = [[],[]]
 
-    times = []
-    tss = []
-
     node_map = {}
     nid = [0] # To pass by reference
 
@@ -103,6 +100,7 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
 
     curtime = fmt_time(df['ts'][0])
     src, dst = None, None
+    times = [curtime]
 
     # Note: for some reason the frame is larger
     # than the number of nodes, ending at idx 170365 (for H0)
@@ -134,8 +132,7 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
                 ei = [[],[]]
                 masks.append(edge_tv_split(eis[-1]))
 
-                times.append(tss)
-                tss = []
+                times.append(ts)
 
                 labels.append(torch.tensor(label_t))
                 label_t = []
@@ -152,7 +149,6 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
 
         ei[0].append(src)
         ei[1].append(dst)
-        tss.append(ts)
         label_t.append(y)
 
         i+=1
@@ -166,5 +162,6 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         te_starts=te_starts_idx,
         node_map=node_map,
         masks=masks,
-        T=len(eis)
+        T=len(eis),
+        times=times
     )
