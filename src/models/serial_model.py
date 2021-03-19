@@ -97,7 +97,8 @@ class Recurrent(nn.Module):
 
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
-                dynamic_feats=False, variational=False, dense_loss=False):
+                dynamic_feats=False, variational=False, dense_loss=False,
+                use_predictor=True, use_graph_gru=False):
         super(SerialTGCN, self).__init__()
 
         self.dynamic_feats = dynamic_feats
@@ -114,6 +115,20 @@ class SerialTGCN(nn.Module):
             hidden_dim=h_dim, 
             hidden_units=gru_hidden_units
         ) if gru_hidden_units > 0 else None
+
+        self.graph_gru = use_graph_gru
+        if use_graph_gru:
+            self.gru = GraphGRU(
+                h_dim, h_dim,
+                n_layers=gru_hidden_units
+            ) if gru_hidden_units > 0 else None
+            self.gru_lin = nn.Linear(h_dim, z_dim)
+
+        self.use_predictor = use_predictor
+        self.predictor = nn.Sequential(
+            nn.Linear(z_dim*2, 1),
+            nn.Sigmoid()
+        ) if use_predictor else None
 
         self.sig = nn.Sigmoid()
         self.kld = torch.zeros((1))
@@ -132,9 +147,16 @@ class SerialTGCN(nn.Module):
         self.kld = torch.zeros((1))
         embeds = self.encode(xs, eis, mask_fn, ews, start_idx)
 
-        return embeds \
-            if type(self.gru) == type(None) \
-            else self.gru(torch.tanh(embeds), h_0, include_h=include_h,)
+        if type(self.gru) == type(None):
+            return embeds
+        elif not self.graph_gru:
+            return self.gru(torch.tanh(embeds), h_0, include_h=include_h)
+        else:
+            h = self.gru(embeds, eis, mask_fn, h=h_0)
+            z = self.gru_lin(h)
+
+            ret = z if not include_h else (z,h)
+            return ret
 
     '''
     Split proceses in two to make it easier to combine embeddings with 
@@ -166,6 +188,11 @@ class SerialTGCN(nn.Module):
     Inner product given edge list and embeddings at time t
     '''
     def decode(self, z, src, dst):
+        if self.use_predictor:
+            return self.predictor(
+                torch.cat([z[src], z[dst]], dim=1)
+            )
+        
         dot = (z[src] * z[dst]).sum(dim=1)
         return self.sig(dot) 
 
@@ -278,13 +305,15 @@ class SerialTGCN(nn.Module):
 
 
 class SerialTGCNGraphGRU(SerialTGCN):
-    def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1,
-                dynamic_feats=False):
+    def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
+                dynamic_feats=False, variational=False, dense_loss=False,
+                use_predictor=True):
         
         super(SerialTGCNGraphGRU, self).__init__(
             x_dim, h_dim, z_dim,
             gru_hidden_units=gru_hidden_units,
-            dynamic_feats=dynamic_feats
+            dynamic_feats=dynamic_feats, variational=variational, 
+            dense_loss=dense_loss, use_predictor=use_predictor
         )
 
         # Just changing the RNN mechanism 
@@ -295,7 +324,8 @@ class SerialTGCNGraphGRU(SerialTGCN):
 
     
     def forward(self, xs, eis, mask_fn, ews=None, start_idx=0):
-        embeds = torch.tanh(self.encode(xs, eis, mask_fn, ews, start_idx))
+        self.kld = torch.zeros((1))
+        embeds = self.encode(xs, eis, mask_fn, ews, start_idx)
 
         return embeds \
             if type(self.gru) == type(None) \

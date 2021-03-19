@@ -31,7 +31,7 @@ TN 10627 | 66579
 
 AUC: 0.5875 AP: 0.9855
 
-Same but with 128 hidden, 64 embed
+Same but with 128 hidden, 64 embed, 1 GRU
               precision    recall  f1-score   support
 
            0       0.15      1.00      0.26      2171

@@ -30,12 +30,24 @@ class CyData(Data):
         for i in range(ei.size(1)):
             src = self.node_map[ei[0, i]]
             dst = self.node_map[ei[1, i]]
-            ts = self.ts[t][i]
+            
+            if 'ts' in self:
+                ts = self.ts[t][i]
+            elif 'slices' in self:
+                ts = self.slices[t]
+            else:
+                ts = ''
+
+            if 'ys' in self:
+                anom = '' if self.ys[t][i] == 1 \
+                        else 'ANOMALOUS'
+            else:
+                anom = ''
             
             arrow = '-->' if 'efs' not in self \
                     else '-( %s )->' % self.efs[t][i]
 
-            edges.append('%s %s %s\t@ %s' % (src, arrow, dst, ts))
+            edges.append('%s %s %s\t@ %s %s' % (src, arrow, dst, ts, anom))
 
         return edges
 
@@ -135,10 +147,6 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
                 skip = True
         if skip:
             continue
-
-        
-        
-
     
         if 'ADMIN' in client:
             client = client.replace('ADMINISTRATOR', 'ADMIN') # Shorten a bit
@@ -150,7 +158,6 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
 
             client += '@' + maybe_comp
 
-        
         if client in cl_to_id:
             src.append(cl_to_id[client])
         else:
@@ -195,10 +202,10 @@ def pico_logs_to_graph(logs, delta, whitelist=[]):
             efs.append(ef)
             ef = []
 
-    return make_data_obj(eis, cl_to_id, tr_set_partition_end, edge_times, efs=efs)
+    return make_data_obj(eis, cl_to_id, tr_set_partition_end, ts=edge_times, efs=efs)
 
 
-def make_data_obj(eis, cl_to_id, tr_set_partition_end, ts, **kwargs):
+def make_data_obj(eis, cl_to_id, tr_set_partition_end, **kwargs):
     cl_cnt = max(cl_to_id.values())
     
     node_map = [None] * (max(cl_to_id.values()) + 1)
@@ -229,7 +236,6 @@ def make_data_obj(eis, cl_to_id, tr_set_partition_end, ts, **kwargs):
         num_nodes=x.size(0),
         T=len(eis),
         node_map=node_map,
-        ts=ts,
         **kwargs
     )
     return data
@@ -259,102 +265,155 @@ TODO
 '''
 def load_lanl(start=140000, end=156658, delta=1000):
     F_LOC = '/mnt/raid0_24TB/datasets/LANL_2015/data_files/auth.txt'
-
-    # Counters in arrays so we can pass by reference
-    node_dict = {}
-    ndc = [0] 
-
-    feat_dict = {}
-    fdc = [0] 
-
-    src = []
-    dst = []
-    feats = []
-
+    F_LOC_R = '/mnt/raid0_24TB/datasets/LANL_2015/data_files/redteam.txt'
 
     '''
     0 time,                       <-- pay attention to deliniate train/test
-    1 source user@domain,         <-- node (ignore domain)
-    2 destination user@domain,    <-- ditto
-    3 source computer,            
-    4 destination computer,
+    1 source user@domain,         
+    2 destination user@domain,    
+    3 source computer,            <-- src node
+    4 destination computer,       <-- dst node
     5 authentication type,        <-- edge feat
     6 logon type,                 <-- edge feat
     7 authentication orientation, <-- edge feat
     8 success/failure
     '''
-    #slice_usr = lambda x : x.split('@')[0].upper()
-    slice_usr = lambda x : x.upper()
 
+    # Helper functions for formatting/readability
+    get_ts = lambda x : int(x[0])
+    get_src = lambda x : x[3]
+    get_dst = lambda x : x[4]
+    
     def get_or_add(s,d,c):
         if s not in d:
             d[s] = c[0]
             c[0] += 1
         return d[s]
-            
+    
+    def add_edge(et, edict):
+        l = et[-1]
+        et = (et[0], et[1])
+
+        if et in edict:
+            edict[et] = min(l, edict[et])
+        else:
+            edict[et] = l
+
+    def get_next_anom(rf):
+        line = rf.readline().split(',')
+        ts = get_ts(line)
+        src = line[2]
+        dst = line[3][:-1] # Strip out newline
+
+        return ts, src, dst
 
     f = open(F_LOC, 'r')
+    red = open(F_LOC_R, 'r')
+
     train = True
-    tr_set_end = 0
+    capturing = False
+    te_starts = 0
 
     #Skip header
     line = f.readline()
     line = f.readline()
+
+    # Skip header
+    red.readline()
+    next_anom = get_next_anom(red)
+
     progress = tqdm()
 
-    e_set = {}
-    ect = 0
+    eis = []
+    edict = {}
+
+    # Counters in arrays so we can pass by reference
+    node_dict = {}
+    ndc = [0] 
+    
+    # Edge features 
+    times = []
     weights = []
+
+    ys = []
+    y = []
+
+    ticks = 0
+    cur_time = 0
 
     while(line):    
         progress.update(1)
         line = line.split(',')
-
+        
+        ts = get_ts(line)
         # Good god there's a lot of logs; cut it off after
         # a few anomalies are captured
-        if int(line[0]) < start:
+        if ts < start:
+            line = f.readline()
+            continue
+        else:
+            if not capturing:
+                cur_time = ts
+                capturing = True
+
+        if ts >= end:
+            break
+
+        # Create new graph if enough time has passed
+        if ts != cur_time:
+            ticks += ts - cur_time 
+
+            if ticks % delta == 0 or ts-cur_time >= delta:
+                ei = list(zip(*edict.keys()))
+                eis.append(ei)
+
+                y = list(edict.values())
+                ys.append(y)
+
+                edict = {}
+                times.append(ts-delta)
+            
+            cur_time = ts
+        
+        # Mark future time steps as test set if we hit the 
+        # specified timestep where anomalies start
+        if ts == DATE_OF_EVIL_LANL and train:
+            train = False 
+            te_starts = len(eis)
+            print(line) 
+            print(next_anom)
+            print(ts)
+
+        # Can now deal with the data on this line 
+        src = get_src(line)
+        dst = get_dst(line)
+
+        # Skip logs with missing info 
+        if '?' in src+dst:
             line = f.readline()
             continue
 
-        if int(line[0]) >= end:
-            break
+        label = 1
+        if not train and ts == next_anom[0]:
+            if src == next_anom[1] and dst == next_anom[2]:
+                label = 0
+                print('label is 0')
+                next_anom = get_next_anom(red)
+ 
+        e_tuple = [
+            get_or_add(src, node_dict, ndc),
+            get_or_add(dst, node_dict, ndc),
+            label
+        ]
 
-        src_u = slice_usr(line[1])
-        dst_u = slice_usr(line[2])
-        feat = ', '.join([line[5], line[8]]).upper()[:-1] # Remove trailing \n
-
-        # Skip logs with missing info 
-        if '?' in src_u+dst_u+feat:
-            line = f.readline()
-            continue 
-
-        # Prevent duplicate edges
-        e_tuple = (
-            get_or_add(src_u, node_dict, ndc),
-            get_or_add(dst_u, node_dict, ndc),
-            get_or_add(feat, feat_dict, fdc)
-        )
-
-        if e_tuple not in e_set:
-            if train:
-                if int(line[0]) >= DATE_OF_EVIL_LANL:
-                    train = False
-                else:
-                    tr_set_end += 1
-
-            e_set[e_tuple] = ect
-            ect += 1
-            weights.append(1)
-
-            src.append(e_tuple[0])
-            dst.append(e_tuple[1])
-            feats.append(e_tuple[2])
-        else:
-            weights[e_set[e_tuple]] += 1
-
+        add_edge(e_tuple, edict)
         line = f.readline()
 
     f.close()   
-    data = make_data_obj(src, dst, feats, node_dict, feat_dict, tr_set_end)
-    data.edge_weight = torch.sigmoid(torch.tensor(weights).float())
+    red.close()
+    data = make_data_obj(
+        eis, node_dict, te_starts, 
+        slices=times, ys=ys
+    )
     return data 
+

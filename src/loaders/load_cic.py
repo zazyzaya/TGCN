@@ -19,6 +19,30 @@ class CICData(Data):
         self.te = lambda t : self.eis[t] 
         self.all = self.te # For readability
 
+    '''
+    Combine two CICData members. Assumes self is entirely
+    training data, and precedes o temporally
+    '''
+    def __add__(self, o):
+        eis = self.eis + o.eis
+        te_starts = self.T + o.te_starts
+        T = self.T + o.T
+        y = self.y + o.y 
+        te_starts = self.T + o.te_starts
+        node_map = o.node_map
+        masks = self.masks + o.masks
+        x = o.x
+
+        return CICData(
+            x=x,
+            y=y,
+            eis=eis,
+            te_starts=te_starts,
+            node_map=node_map,
+            masks=masks,
+            T=T
+        )
+
 
 HOME = '/mnt/raid0_24TB/datasets/cic/iscxdownloads.cs.unb.ca/iscxdownloads/CIC-IDS-2017/TrafficLabelling/'
 SUFFIX = '.pcap_ISCX.csv'
@@ -27,9 +51,9 @@ SUFFIX = '.pcap_ISCX.csv'
 FMAP = {
     'M': 'Monday-WorkingHours',
     'T': 'Tuesday-WorkingHours',
-    'W': 'Wednesday-WorkingHours',
+    'W': 'Wednesday-workingHours', # lowercase w here for some reason?
     'H0': 'Thursday-WorkingHours-Morning-WebAttacks',
-    'H1': 'Thursday-WorkingHours-Afternoon-Infiltration',
+    'H1': 'Thursday-WorkingHours-Afternoon-Infilteration',
     'F0': 'Friday-WorkingHours-Morning',
     'F1': 'Friday-WorkingHours-Afternoon-PortScan',
     'F2': 'Friday-WorkingHours-Afternoon-DDos'
@@ -41,14 +65,17 @@ INV_FMAP = {v:k for (k,v) in FMAP.items()}
 # Info from here: https://www.unb.ca/cic/datasets/ids-2017.html
 TE_STARTS = {
     'M': 'nan',
-    'T': 'nan',
-    'W': 'nan',
+    'T': '9:20',
+    'W': '9:47',
     'H0': '9:20',
-    'H1': '14:19',
+    'H1': '2:19',
     'F0': '10:02',
-    'F1': '13:55',
-    'F2': '15:56'
+    'F1': '1:55',
+    'F2': '3:56'
 }
+
+# They're so god damn inconsistent with timecodes. It's mindblowing
+has_seconds = ['M']
 
 '''
 Fname:  a code from FMAP
@@ -56,7 +83,8 @@ delta:  size of time slices (in minutes) (TODO unused rn)
 end:    time stamp to end training set at. If None, first ts where
         anomalies are present
 '''
-def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
+def load_cic(fname='H0', delta=1, end='10:00', te_starts=None, node_map={}):
+    
     assert fname in FMAP.keys() or fname in FMAP.values(), \
         'fname must be either a key or value from\n%s' % json.dumps(FMAP, indent=2)
         
@@ -64,6 +92,7 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         fname = FMAP[fname]
     
     te_starts = te_starts if te_starts else TE_STARTS[INV_FMAP[fname]]
+    clip_seconds = INV_FMAP[fname] in has_seconds
     fname = HOME + fname + SUFFIX
 
     df = pd.read_csv(
@@ -78,18 +107,19 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
     eis = []
     ei = [[],[]]
 
-    node_map = {}
-    nid = [0] # To pass by reference
+    nid = [len(node_map)] # To pass by reference
 
     ticks = 0
     masks = []
 
     te_start_marked = False
+    te_starts_idx = float('inf')
     prog = tqdm(desc='Records parsed')
 
     # Helper functions
     isnan = lambda x : x != x
-    fmt_time = lambda x : x[9:]
+    fmt_time = lambda x : x[9:] if not clip_seconds else x[11:-3]
+
     def get_or_add(k):
         if k in node_map:
             return node_map[k]
@@ -126,6 +156,7 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         if curtime != ts:
             curtime = ts 
             ticks += 1
+            prog.set_description(ts)
 
             if ticks % delta == 0:
                 eis.append(torch.tensor(ei))
@@ -162,6 +193,5 @@ def load_cic(fname='H0', delta=1, end='10:45', te_starts=None):
         te_starts=te_starts_idx,
         node_map=node_map,
         masks=masks,
-        T=len(eis),
-        times=times
+        T=len(eis)
     )
