@@ -1,10 +1,12 @@
 from copy import deepcopy
+import pickle 
 
 import torch
 from torch.optim import Adam
 
 import generators as g
 import loaders.load_cyber as lc 
+import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
 from utils import get_score
 
@@ -109,6 +111,8 @@ def train_cyber(data, model, dynamic, single_prior=False,
 
     # Scores all edges and matches them with name/timestamp
     edges = []
+    data.node_map = pickle.load(open(ld.LANL_FOLDER+'nmap.pkl', 'rb'))
+    
     for i in range(zs.size(0)):
         idx = i + data.te_starts
 
@@ -141,7 +145,7 @@ def train_cyber(data, model, dynamic, single_prior=False,
 if __name__ == '__main__':
     pred = False
     
-    data = lc.load_lanl()
+    data = ld.load_partial_lanl(start=0, is_test=True)
     model = SerialTGCN(
         data.x.size(1), 32, 16,
         variational=True, use_predictor=False,
@@ -149,3 +153,4 @@ if __name__ == '__main__':
     )
 
     train_cyber(data, model, pred, single_prior=False)
+    torch.save(model, '/mnt/raid0_24TB/isaiah/code/TGCN/src/models/pretrained_LANL.model')
