@@ -27,8 +27,7 @@ def tpr_fpr(rank, n, total, tot_anom):
 
     return "TPR: %0.4f, FPR: %0.4f" % (tpr*100, fpr*100)
 
-def train_cyber(data, model, dynamic, single_prior=False, 
-                epochs=1500):
+def train(data, model, dynamic, epochs=1500):
     # Leave all params as default for now
     SKIP = data.te_starts 
     opt = Adam(model.parameters(), lr=LR)
@@ -40,7 +39,7 @@ def train_cyber(data, model, dynamic, single_prior=False,
         opt.zero_grad()
 
         # Get embeddings
-        zs = model(data.x, data.eis[:SKIP], data.tr)
+        zs = model(data.x, data.eis[:SKIP], data.tr, ew_fn=data.tr_w)
         
         # Generate positive and negative samples from this and the next time step
         if dynamic:
@@ -64,7 +63,7 @@ def train_cyber(data, model, dynamic, single_prior=False,
 
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis[:SKIP], data.tr)
+            zs = model(data.x, data.eis[:SKIP], data.tr, ew_fn=data.tr_w)
         
             if not dynamic:
                 p,n,z = g.link_prediction(data, data.va, zs, end=SKIP)
@@ -104,19 +103,22 @@ def train_cyber(data, model, dynamic, single_prior=False,
                     break
 
     model = best[1]
-    zs = None
+    return model 
+
+def test(data, model, pred, single_prior=False):
+    SKIP = data.te_starts 
     with torch.no_grad():
         model.eval()
-        zs, h = model(data.x, data.eis, data.all, include_h=True)[:data.te_starts]
+        zs, h = model(data.x, data.eis, data.all, ew_fn=data.all_w, include_h=True)[:data.te_starts]
 
         # Generate all future embeds using prior from last normal state
         if single_prior:
             zs = torch.cat([
-                model(data.x, [data.eis[i]], data.all, h_0=h, start_idx=i)
+                model(data.x, [data.eis[i]], data.all, ew_fn=data.all_w, h_0=h, start_idx=i)
                 for i in range(SKIP-1, data.T)
             ], dim=0)
         else:
-            zs = model(data.x, data.eis, data.all)[SKIP-1:]
+            zs = model(data.x, data.eis, data.all, ew_fn=data.all_w)[SKIP-1:]
 
     zs = zs[:-1] if pred else zs[1:] 
 
@@ -139,17 +141,16 @@ def train_cyber(data, model, dynamic, single_prior=False,
     max_anom = (0, 0.0)
     edges.sort(key=lambda x : x[0])
     anoms = 0
-    tot_anoms = 9 # Hardcoded for now
+    
     with open('out.txt', 'w+') as f:
         for i in range(len(edges)):
             e = edges[i]
-            f.write('%0.4f %s\n' % e) 
             
             if 'ANOM' in e[1]:
                 anoms += 1
                 max_anom = (i, e[0])
-                stats = tpr_fpr(i, anoms, len(edges), tot_anoms)
-                print('[%d/%d] %0.4f %s  %s' % (i, len(edges), e[0], e[1], stats))
+                stats = tpr_fpr(i, anoms, len(edges), data.tot_anoms)
+                f.write('[%d/%d] %0.4f %s  %s\n' % (i, len(edges), e[0], e[1], stats))
 
     print(
         'Maximum anomaly scored %d out of %d edges'
@@ -158,14 +159,23 @@ def train_cyber(data, model, dynamic, single_prior=False,
 
     
 if __name__ == '__main__':
+    HOME = '/mnt/raid0_24TB/isaiah/code/TGCN/src/'
     pred = False
-    
-    data = ld.load_partial_lanl(start=0, is_test=True)
+    te_start = ld.DATE_OF_EVIL_LANL-1000
+
+    # Load training data and train
+    data = ld.load_partial_lanl(start=0, is_test=False)
     model = SerialTGCN(
-        data.x.size(1), 64, 32,
-        variational=True, use_predictor=False,
-        gru_hidden_units=2
+        data.x.size(1), 32, 16,
+        variational=True, gru_hidden_units=2
+    )
+    model = train(data, model, pred)
+
+    # Load testing data and test
+    model = torch.load(HOME + '../pretrained/pretrained_LANL_2GRU.model')
+    data = ld.load_partial_lanl(start=0, is_test=True)
+    test(
+        data, model, pred, single_prior=False
     )
 
-    train_cyber(data, model, pred, single_prior=False)
-    torch.save(model, '/mnt/raid0_24TB/isaiah/code/TGCN/src/models/pretrained_LANL.model')
+    torch.save(model, HOME + 'pretrained_LANL.model')

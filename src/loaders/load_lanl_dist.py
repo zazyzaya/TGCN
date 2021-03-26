@@ -1,3 +1,4 @@
+import os 
 import pickle 
 import torch 
 from torch_geometric.data import Data 
@@ -18,9 +19,16 @@ class LANL_Data(Data):
         self.tr = lambda t : self.eis[t][:, self.masks[t]] 
         self.va = lambda t : self.eis[t][:, ~self.masks[t]]
 
+        self.tr_w = lambda t : self.ews[t][self.masks[t]]
+        self.va_w = lambda t : self.ews[t][~self.masks[t]]
+
         # Assumes test sets are unmasked (online classification)
         self.te = lambda t : self.eis[t] 
-        self.all = self.te # For readability
+        self.te_w = lambda t : self.ews[t]
+
+        # For readability
+        self.all = self.te 
+        self.all_w = self.te_w
 
 
     '''
@@ -82,12 +90,13 @@ def make_data_obj(eis, tr_set_partition_end, **kwargs):
 Equivilant to load_cyber.load_lanl but uses the sliced LANL files 
 for faster scanning to the correct lines
 '''
-def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
+def load_partial_lanl(start=140000, end=156659, delta=1000, is_test=False):
     cur_slice = start - (start % FILE_DELTA)
     start_f = str(cur_slice) + '.txt'
     in_f = open(LANL_FOLDER + start_f, 'r')
 
     edges = []
+    ews = []
     edges_t = {}
     ys = []
     times = []
@@ -106,9 +115,10 @@ def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
     # but for now, edges map to their anomaly value (1 == anom, else 0)
     def add_edge(et, is_anom=0):
         if et in edges_t:
-            edges_t[et] = max(is_anom, edges_t[et])
+            val = edges_t[et]
+            edges_t[et] = (max(is_anom, val[0]), val[1]+1)
         else:
-            edges_t[et] = is_anom 
+            edges_t[et] = (is_anom, 1)
 
     def is_anomalous(src, dst, anom):
         src = node_map[src]
@@ -133,6 +143,7 @@ def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
     prog = tqdm(desc='Seconds read', total=end-start-1)
 
     anom_starts = 0
+    tot_anoms = 0
     anom_marked = False
     keep_reading = True
 
@@ -164,11 +175,15 @@ def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
                 ei = list(zip(*edges_t.keys()))
                 edges.append(ei)
 
+                y,ew = list(zip(*edges_t.values()))
+                ews.append(
+                    torch.sigmoid(torch.tensor(ew, dtype=torch.float))
+                )
                 if is_test:
-                    ys.append(list(edges_t.values()))
+                    ys.append(y)
 
                 edges_t = {}
-                times.append(curtime)
+                times.append(str(curtime) + '-' + str(ts-1))
                 curtime = ts 
 
                 # Break out of loop after saving if hit final timestep
@@ -180,6 +195,7 @@ def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
             if ts == next_anom[0] and is_anomalous(src, dst, next_anom):
                 add_edge(et, is_anom=1)
                 next_anom = get_next_anom(rf)
+                tot_anoms += 1
 
                 # Mark the first timestep with anomalies as test set start
                 if not anom_marked:
@@ -193,20 +209,30 @@ def load_partial_lanl(start=140000, end=156658, delta=1000, is_test=False):
 
         in_f.close() 
         cur_slice += FILE_DELTA 
-        in_f = open(LANL_FOLDER + str(cur_slice) + '.txt', 'r')
-        line = in_f.readline()
+
+        if os.path.exists(LANL_FOLDER + str(cur_slice) + '.txt'):
+            in_f = open(LANL_FOLDER + str(cur_slice) + '.txt', 'r')
+            line = in_f.readline()
+        else:
+            break
     
     in_f.close() 
-    rf.close() 
+    
+    if is_test:
+        rf.close() 
 
     if not is_test:
         anom_starts = len(edges)
 
     ys = ys if is_test else None
+    scan_prog.close()
+    prog.close()
 
     return make_data_obj(
         edges, 
         anom_starts,  
         slices=times,
-        ys=ys 
+        ys=ys,
+        tot_anoms=tot_anoms,
+        ews=ews
     )

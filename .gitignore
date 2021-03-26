@@ -2,3 +2,4 @@ src/data/*
 src/__pycache__/
 src/models/__pycache__/
 src/loaders/__pycache__/
+pretrained/*
