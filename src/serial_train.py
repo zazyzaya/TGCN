@@ -1,6 +1,8 @@
 from copy import deepcopy
 import argparse
+from numpy.lib.index_tricks import _fill_diagonal_dispatcher
 
+import pandas as pd
 import torch 
 from torch.optim import Adam
 
@@ -17,12 +19,17 @@ uses_priors = [VGRNN, PriorSerialTGCN]
 
 LR = 0.01
 PATIENCE = 50
+MAX_DECREASE = 2
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
 def train(model, data, epochs=1500, dynamic=False):
+    lr = LR
+
     # Test/Val on last 3 time steps
     SKIP = data.T-3
+    decreases = 0
+    print(LR)
 
     opt = Adam(model.parameters(), lr=LR)
 
@@ -31,22 +38,19 @@ def train(model, data, epochs=1500, dynamic=False):
     for e in range(epochs):
         model.train()
         opt.zero_grad()
+        zs = model(data.x, data.eis[:SKIP], data.all)
 
         # Get embedding
         if dynamic:
-            zs = model(data.x, data.eis[:SKIP], data.all)
-            p,n,z = g.link_prediction(data, None, zs, include_tr=False, end=SKIP)
+            p,n,z = g.link_prediction(data, data.all, zs, include_tr=False, end=SKIP, nratio=5)
         else:
-            zs = model(data.x, data.eis[:SKIP], data.tr)
-            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP)        
+            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP, nratio=5)        
 
         if not dynamic:
             loss = model.loss_fn(p,n,z)
         
         elif dynamic and model.__class__ not in uses_priors:
-            dp,dn,dz = g.dynamic_link_prediction(data, data.all, zs, include_tr=False, end=SKIP)
-            
-            #loss = model.loss_fn(p+dp, n+dn, torch.cat([z, dz]))        
+            dp,dn,dz = g.dynamic_link_prediction(data, data.all, zs, include_tr=False, end=SKIP)      
             loss = model.loss_fn(dp, dn, dz)
 
         else:
@@ -60,10 +64,12 @@ def train(model, data, epochs=1500, dynamic=False):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
 
         trloss = loss.item() 
-
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis, data.tr)[SKIP-1:]
+            if not dynamic:
+                zs = model(data.x, data.eis, data.tr)[SKIP:]
+            else:
+                zs = model(data.x, data.eis, data.all)[SKIP-1:]
         
             if not dynamic:
                 p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
@@ -75,7 +81,7 @@ def train(model, data, epochs=1500, dynamic=False):
                     (e, trloss, fmt_score(sscores) )
                 )
 
-                avg = sscores[1]
+                avg = sscores[0] + sscores[1]
 
             else:
                 # VGRNN is providing priors, which are built from the previous timestep
@@ -113,17 +119,34 @@ def train(model, data, epochs=1500, dynamic=False):
             else:
                 # Though it's not reflected in the code, the authors for VGRNN imply in the
                 # supplimental material that after 500 epochs, early stopping may kick in 
-                if e > 500:
+                if e > 100:
                     no_improvement += 1
-                if no_improvement > PATIENCE:
-                    print("Early stopping...\n")
-                    break
+                if no_improvement == PATIENCE:
+                    # This doesn't improve anything, and I don't want to stray
+                    # too far from the OG workflow the paper uses
+                    if decreases < MAX_DECREASE and False:
+                        decreases += 1 
+                        model = best[1]
+                        
+                        lr /= 2
+                        for p in opt.param_groups:
+                            p['lr'] = lr
+
+                        no_improvement = 0
+                        print("Lowering LR")
+
+                    else:
+                        print("Early stopping...\n")
+                        break
 
 
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs = model(data.x, data.eis, data.tr)[SKIP-1:]
+        if not dynamic:
+            zs = model(data.x, data.eis, data.tr)[SKIP:]
+        else:
+            zs = model(data.x, data.eis, data.all)[SKIP-1:]
 
         if not dynamic:
             p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
@@ -137,7 +160,7 @@ def train(model, data, epochs=1500, dynamic=False):
                 '''
             % fmt_score(sscores))
 
-            return sscores
+            return {'auc': sscores[0], 'ap': sscores[1]}
 
         else:
             if model.__class__ in uses_priors:
@@ -165,7 +188,12 @@ def train(model, data, epochs=1500, dynamic=False):
                 (fmt_score(dscores), fmt_score(nscores))
             )
 
-            return {'pred': dscores, 'new': nscores}
+            return {
+                'pred-auc': dscores[0],
+                'pred-ap': dscores[1],
+                'new-auc': nscores[0], 
+                'new-ap': nscores[1]
+            }
 
 
 if __name__ == '__main__':
@@ -199,38 +227,51 @@ if __name__ == '__main__':
         help='Uses the sparse loss function for VGRNN'
     )
     args = parser.parse_args()
-
     mtype = args.model.lower()
-    if mtype == 'tgcn' or mtype == 't':
-        if args.grnn:
-            model = SerialTGCNGraphGRU(
-            data.x.size(1), 32, 16        
-        )
-        else:    
-            model = SerialTGCN(
-                data.x.size(1), 32, 16, 
-                variational=args.not_variational,
-                #dense_loss=args.sparse_loss
+    outf = mtype + '.txt'
+
+    for d in ['enron10', 'fb', 'dblp']:
+        data = vd.load_vgrnn(d)
+        
+        if mtype == 'tgcn' or mtype == 't':
+            if args.grnn:
+                model = SerialTGCNGraphGRU(
+                data.x.size(1), 32, 16        
             )
-    elif mtype == 'rgae' or mtype == 'r':
-        model = GAE_RNN(
-            data.x.size(1), 32, 16,
-            grnn=args.grnn, variational=args.not_variational
-        )
+            else:    
+                model = SerialTGCN(
+                    data.x.size(1), 32, 16, 
+                    variational=args.not_variational
+                    #dense_loss=args.sparse_loss
+                )
+        elif mtype == 'rgae' or mtype == 'r':
+            model = GAE_RNN(
+                data.x.size(1), 32, 16,
+                grnn=args.grnn, variational=args.not_variational
+            )
 
-    elif mtype == 'vgrnn' or mtype == 'v':
-        model = VGRNN(
-            data.x.size(1), 32, 16, pred=args.static,
-            adj_loss=args.sparse_loss
-        )
+        elif mtype == 'vgrnn' or mtype == 'v':
+            model = VGRNN(
+                data.x.size(1), 32, 16, pred=args.static,
+                adj_loss=args.sparse_loss
+            )
 
-    elif mtype == 'ptgcn' or mtype == 'p':
-        model = PriorSerialTGCN(
-            data.x.size(1), 32, 16, pred=args.static
-        )
+        elif mtype == 'ptgcn' or mtype == 'p':
+            model = PriorSerialTGCN(
+                data.x.size(1), 32, 16, pred=args.static
+            )
 
-    else: 
-        raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
+        else: 
+            raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
 
-    print(model.__class__)
-    train(model, data, dynamic=args.static)
+        stats = [train(model, data, dynamic=args.static) for _ in range(5)]
+
+        df = pd.DataFrame(stats)
+        print(df.mean()*100)
+        print(df.sem()*100)
+
+        f = open(outf, 'a')
+        f.write(d + '\n')
+        f.write(str(df.mean()*100) + '\n')
+        f.write(str(df.sem()*100) + '\n\n')
+        f.close()

@@ -1,0 +1,60 @@
+enron10
+auc    97.981667
+ap     97.521868
+dtype: float64
+auc    0.412809
+ap     0.522188
+dtype: float64
+
+fb
+auc    93.787961
+ap     93.175548
+dtype: float64
+auc    0.455538
+ap     0.572395
+dtype: float64
+
+dblp
+auc    89.521107
+ap     90.272034
+dtype: float64
+auc    0.687772
+ap     1.033755
+dtype: float64
+
+enron10
+pred-auc    92.700173
+pred-ap     93.986232
+new-auc     84.839063
+new-ap      87.120610
+dtype: float64
+pred-auc    0.352101
+pred-ap     0.165001
+new-auc     0.719570
+new-ap      0.326804
+dtype: float64
+
+fb
+pred-auc    88.158597
+pred-ap     87.635536
+new-auc     85.656098
+new-ap      84.815797
+dtype: float64
+pred-auc    0.124014
+pred-ap     0.237602
+new-auc     0.078731
+new-ap      0.180538
+dtype: float64
+
+dblp
+pred-auc    86.407517
+pred-ap     88.917822
+new-auc     77.517009
+new-ap      80.237555
+dtype: float64
+pred-auc    0.480052
+pred-ap     0.210551
+new-auc     1.064139
+new-ap      0.874208
+dtype: float64
+

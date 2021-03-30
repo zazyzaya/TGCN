@@ -19,6 +19,7 @@ class TData(Data):
         self.tr = lambda t : to_undirected(self.eis[t][:, self.masks[t][0]])
         self.all = lambda t : self.eis[t]
 
+
 '''
 For loading datasets from the VRGNN repo (none have features)
 '''
