@@ -30,6 +30,18 @@ class LANL_Data(Data):
         self.all = self.te 
         self.all_w = self.te_w
 
+        # Enum like for masked function used by worker processes
+        self.TRAIN = 0
+        self.VAL = 1
+        self.TEST = 2
+
+    def masked(self, idx, mask):
+        if mask == self.TRAIN:
+            return self.tr(idx), self.tr_w(idx)
+        elif mask == self.VAL:
+            return self.va(idx), self.va_w(idx)
+        else:
+            return self.te(idx), self.te_w(idx)
 
     '''
     Makes it a little easier to format an edge list for printing

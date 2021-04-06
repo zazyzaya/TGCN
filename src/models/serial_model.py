@@ -31,7 +31,7 @@ class GAE(nn.Module):
 
 
 class VGAE(nn.Module):
-    def __init__(self, x_dim, hidden_dim, embed_dim):
+    def __init__(self, x_dim, hidden_dim, embed_dim, kld_later=False):
         super(VGAE, self).__init__()
 
         self.c1 = GCNConv(x_dim, hidden_dim, add_self_loops=True)
@@ -49,15 +49,16 @@ class VGAE(nn.Module):
         x = self.drop(x)
         
         mean = self.mean(x, ei)
-        if self.eval:
+        if not self.training:
             return mean, torch.zeros((1))
 
         std = self.soft(self.std(x, ei))
-
         z = self._reparam(mean, std)
-        kld = 0.5 * torch.sum(torch.exp(std) + mean**2 - 1. - std)
 
-        return z, kld
+        return z
+
+    def kld_loss(self, mean, std):
+        return 0.5 * torch.sum(torch.exp(std) + mean**2 - 1. - std)
 
     def _reparam(self, mean, std):
         eps1 = torch.FloatTensor(std.size()).normal_()
@@ -70,7 +71,7 @@ class Recurrent(nn.Module):
         super(Recurrent, self).__init__()
 
         self.gru = nn.GRU(
-            feat_dim, hidden_dim, num_layers=hidden_units, dropout=0.25
+            feat_dim, hidden_dim, num_layers=hidden_units#, dropout=0.25
         )
 
         self.drop = nn.Dropout(0.25)
@@ -89,6 +90,7 @@ class Recurrent(nn.Module):
         else:
             xs, h = self.gru(xs)
         
+        #xs = self.drop(xs)
         if not include_h:
             return self.lin(xs)
         else:
@@ -97,7 +99,7 @@ class Recurrent(nn.Module):
 
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
-                dynamic_feats=False, variational=False, dense_loss=False,
+                dynamic_feats=False, variational=True, dense_loss=False,
                 use_predictor=False, use_graph_gru=False):
         super(SerialTGCN, self).__init__()
 
@@ -122,6 +124,7 @@ class SerialTGCN(nn.Module):
                 h_dim, h_dim,
                 n_layers=gru_hidden_units
             ) if gru_hidden_units > 0 else None
+            self.drop = nn.Dropout(0.25)
             self.gru_lin = nn.Linear(h_dim, z_dim)
 
         self.use_predictor = use_predictor
@@ -144,7 +147,6 @@ class SerialTGCN(nn.Module):
     '''
     def forward(self, xs, eis, mask_fn, ew_fn=None, start_idx=0, 
                 include_h=False, h_0=None):
-        self.kld = torch.zeros((1))
         embeds = self.encode(xs, eis, mask_fn, ew_fn, start_idx)
 
         if type(self.gru) == type(None):
@@ -170,19 +172,21 @@ class SerialTGCN(nn.Module):
             ew = None if not ew_fn else ew_fn(start_idx + i)
             x = xs if not self.dynamic_feats else xs[start_idx + i]
 
-            if self.variational: 
-                z, kld = self.gcn(x,ei,ew)
-                self.kld += kld
-            else:
-                z = self.gcn(x,ei,ew)
-
+            z = self.gcn(x,ei,ew)
             embeds.append(z)
 
-        self.kld = self.kld.true_divide(len(eis))
+        # Experiments have shown the RNN takes care of this
+        # self.kld = self.kld.true_divide(len(eis))
         return torch.stack(embeds)
 
     def recurrent(self, embeds):
-        return self.gru(torch.tanh(embeds))
+        x = self.gru(
+            torch.tanh(embeds)
+        )
+        if self.graph_gru:
+            x = self.drop(x)
+            return self.gru_lin(x)
+        return x
 
 
     '''
@@ -233,7 +237,7 @@ class SerialTGCN(nn.Module):
             else:
                 tot_loss = full_adj_nll(ts[i], z)
 
-        return tot_loss.true_divide(T) + self.kld
+        return tot_loss.true_divide(T)
 
     '''
     Get scores for true/false embeddings to find ROC/AP scores.

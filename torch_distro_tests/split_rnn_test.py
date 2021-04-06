@@ -1,6 +1,7 @@
 import os
 import asyncio
-from asyncio import Condition, BaseEventLoop
+import time 
+from random import random 
 
 import torch 
 from torch import device, nn
@@ -25,7 +26,8 @@ class Embedder(nn.Module):
         )
 
     def forward(self, x):
-        print(rpc.get_worker_info().name)
+        time.sleep(random()*0.01)
+        print(rpc.get_worker_info().name + ' embedding')
         return self.lin(x)
 
 
@@ -61,8 +63,9 @@ class RNNMulti(nn.Module):
             )
 
         xs = torch.stack([f.wait() for f in x_futs])
+        print(rpc.get_worker_info().name + ' running RNN')
         h = self.rnn(xs)[1]
-        return self.out(h)
+        return self.out(h).squeeze(0)
 
 
     def parameter_rrefs(self):
@@ -94,14 +97,14 @@ def train_loop(rrefs, X_tr, y_tr, X_te, y_te):
             # No need to zero grad because it's blown 
             # away every step by the dist API 
 
-        print("[%d] Loss: %0.4f" % (e, loss.item()))
+        print("[%d] Loss: %0.4f\n" % (e, loss.item()))
 
     y_hat = model(X_te)
     y_hat[y_hat < 0.5] = 0
     y_hat[y_hat >= 0.5] = 1
 
     correct = float((y_hat == y_te).sum().item())
-    total = float(y_hat.size(1))
+    total = float(y_hat.size(0))
     print("Final accuracy: %d/%d = %0.4f" % (correct, total, correct/total)) 
 
 

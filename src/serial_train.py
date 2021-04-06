@@ -18,12 +18,12 @@ torch.set_num_threads(16)
 uses_priors = [VGRNN, PriorSerialTGCN]
 
 LR = 0.01
-PATIENCE = 50
+PATIENCE = 100
 MAX_DECREASE = 2
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
-def train(model, data, epochs=1500, dynamic=False):
+def train(model, data, epochs=1500, dynamic=False, nratio=10):
     lr = LR
 
     # Test/Val on last 3 time steps
@@ -42,15 +42,15 @@ def train(model, data, epochs=1500, dynamic=False):
 
         # Get embedding
         if dynamic:
-            p,n,z = g.link_prediction(data, data.all, zs, include_tr=False, end=SKIP, nratio=5)
+            p,n,z = g.link_prediction(data, data.all, zs, include_tr=False, end=SKIP, nratio=nratio)
         else:
-            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP, nratio=5)        
+            p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP, nratio=nratio)        
 
         if not dynamic:
             loss = model.loss_fn(p,n,z)
         
         elif dynamic and model.__class__ not in uses_priors:
-            dp,dn,dz = g.dynamic_link_prediction(data, data.all, zs, include_tr=False, end=SKIP)      
+            dp,dn,dz = g.dynamic_link_prediction(data, data.all, zs, include_tr=False, end=SKIP, nratio=nratio)      
             loss = model.loss_fn(dp, dn, dz)
 
         else:
@@ -109,10 +109,14 @@ def train(model, data, epochs=1500, dynamic=False):
                 )
 
                 avg = (
-                    dscores[0] + dscores[1] +
-                    dnscores[0] + dnscores[1]
+                    dscores[0] + dscores[1] 
+                    #+
+                    #dnscores[0] + dnscores[1]
                 )
             
+            if e == KL_ANNEALING:
+                model.kld_weight = KL_WEIGHT
+
             if avg > best[0]:
                 best = (avg, deepcopy(model))
                 no_improvement = 0
@@ -129,8 +133,7 @@ def train(model, data, epochs=1500, dynamic=False):
                         model = best[1]
                         
                         lr /= 2
-                        for p in opt.param_groups:
-                            p['lr'] = lr
+                        opt = Adam(model.parameters(), lr=lr)
 
                         no_improvement = 0
                         print("Lowering LR")
@@ -264,7 +267,7 @@ if __name__ == '__main__':
         else: 
             raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
 
-        stats = [train(model, data, dynamic=args.static) for _ in range(5)]
+        stats = [train(deepcopy(model), data, dynamic=args.static) for _ in range(10)]
 
         df = pd.DataFrame(stats)
         print(df.mean()*100)

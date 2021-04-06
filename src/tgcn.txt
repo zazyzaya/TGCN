@@ -1,0 +1,119 @@
+nratio 10 balanced
+enron10
+pred-auc    93.030743
+pred-ap     93.211397
+new-auc     86.643837
+new-ap      86.482870
+dtype: float64
+pred-auc    0.468442
+pred-ap     0.448262
+new-auc     0.449529
+new-ap      0.536216
+dtype: float64
+
+fb
+pred-auc    87.517234
+pred-ap     86.900376
+new-auc     85.104977
+new-ap      84.107294
+dtype: float64
+pred-auc    0.206436
+pred-ap     0.271877
+new-auc     0.141091
+new-ap      0.253708
+dtype: float64
+
+dblp
+pred-auc    85.675626
+pred-ap     87.928806
+new-auc     75.240620
+new-ap      77.874777
+dtype: float64
+pred-auc    0.219938
+pred-ap     0.211217
+new-auc     0.427978
+new-ap      0.604575
+dtype: float64
+
+nratio 10 new
+enron10
+pred-auc    92.433610
+pred-ap     92.932043
+new-auc     86.086285
+new-ap      86.206885
+dtype: float64
+pred-auc    0.174196
+pred-ap     0.302118
+new-auc     0.328806
+new-ap      0.615389
+dtype: float64
+
+fb
+pred-auc    87.747053
+pred-ap     87.035974
+new-auc     85.402002
+new-ap      84.187566
+dtype: float64
+pred-auc    0.158824
+pred-ap     0.193119
+new-auc     0.181496
+new-ap      0.305025
+dtype: float64
+
+dblp
+pred-auc    85.632788
+pred-ap     87.924329
+new-auc     74.909838
+new-ap      78.250946
+dtype: float64
+pred-auc    0.243563
+pred-ap     0.227692
+new-auc     0.555217
+new-ap      0.342088
+dtype: float64
+
+10 avg focus 
+enron10
+pred-auc    91.478242
+pred-ap     91.558856
+new-auc     85.532639
+new-ap      85.497794
+dtype: float64
+pred-auc    0.407729
+pred-ap     0.412659
+new-auc     0.640725
+new-ap      0.614628
+dtype: float64
+
+fb
+pred-auc    86.937069
+pred-ap     85.913018
+new-auc     84.673485
+new-ap      83.157390
+dtype: float64
+pred-auc    0.453469
+pred-ap     0.645945
+new-auc     0.404672
+new-ap      0.693055
+dtype: float64
+
+dblp
+pred-auc    86.865657
+pred-ap     88.873022
+new-auc     77.189243
+new-ap      79.993027
+dtype: float64
+pred-auc    0.205806
+pred-ap     0.154510
+new-auc     0.545486
+new-ap      0.381694
+dtype: float64
+
+enron10
+auc    96.233937
+ap     95.731763
+dtype: float64
+auc    0.440816
+ap     0.645135
+dtype: float64
+

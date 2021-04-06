@@ -8,24 +8,13 @@ import generators as g
 import loaders.load_cyber as lc 
 import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
-from utils import get_score
+from utils import get_score, tpr_fpr
 
 torch.set_num_threads(16)
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
 LR=0.001
 PATIENCE=50
-
-def tpr_fpr(rank, n, total, tot_anom):
-    # TPR is easy
-    tpr = n/rank
-
-    # FPR is trickier 
-    fp = rank-n
-    tn = total-rank-tot_anom
-    fpr = fp / (fp+tn)
-
-    return "TPR: %0.4f, FPR: %0.4f" % (tpr*100, fpr*100)
 
 def train(data, model, dynamic, epochs=1500):
     # Leave all params as default for now
