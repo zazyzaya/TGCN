@@ -10,48 +10,68 @@ from .utils import _remote_method, _remote_method_async, _param_rrefs
 '''
 Extended so data can live in these objects to minimize 
 needless communication 
-
-TODO 
 '''
-class R_VGAE(VGAE):
-    def __init__(self, x_dim, hidden_dim, embed_dim, data):
-        super().__init__(x_dim, hidden_dim, embed_dim)
+class R_GAE(GAE):
+    def __init__(self, h_dim, loader, load_args):
+        print(rpc.get_worker_info().name + ": Loading ts from %d to %d" % (load_args['start'], load_args['end']))
+
+        data = loader(**load_args) 
+        super(R_GAE, self).__init__(data.x.size(1), h_dim, h_dim)
+        
         self.data = data 
+        self.x_dim = data.x.size(1)
 
     def forward(self, mask):
         zs = []
         for i in range(self.data.T):
             x = self.data.x 
-            ei = self.data.masked(i, mask)
+            ei, ew = self.data.masked(i, mask)
+            zs.append(
+                super(R_GAE, self).forward(
+                    x, ei, ew=ew
+                )
+            )
+
+        return torch.stack(zs)
+
+'''
+Allows you to call methods other than forward from the 
+RPC remote method
+'''
+class MyDDP(DDP):
+    '''
+    Used to generate negative edges by master
+    (Unaccessable with DDP... TODO)
+    '''
+    def get_eis(self, mask_enum):
+        return [
+            self.module.data.masked(i, mask_enum)[0]
+            for i in range(self.module.data.T)
+        ]
+
+    def get_x_dim(self):
+        return self.module.x_dim
 
 '''
 Called by worker processes to initialize their models
 The RRefs to these models are then passed to the TGCN
 '''
-def get_remote_gae(x_dim, h_dim, variational=True):
-    m = 'VGAE' if variational else 'GAE'
+def get_remote_gae(h_dim, loader, load_args): 
+    model = R_GAE(
+        h_dim, loader, load_args
+    )
 
-    print("Building " + m + " on " + rpc.get_worker_info().name)
-    if variational:
-        model = VGAE(
-            x_dim, h_dim, h_dim
-        )
-    else:
-        model = GAE(
-            x_dim, embed_dim=h_dim, hidden_dim=h_dim
-        )
-
-    model.train()
-    return DDP(model)    
+    return MyDDP(model)    
 
 
 class TGCN(SerialTGCN):
-    def __init__(self, remote_rrefs, x_dim, h_dim, z_dim, gru_hidden_units=1, 
-                dynamic_feats=False, variational=True):
+    def __init__(self, remote_rrefs, h_dim, z_dim, 
+                gru_hidden_units=1, dynamic_feats=False):
         
+        # X_dim doesn't matter, GAEs take care of it
         super(TGCN, self).__init__(
-            x_dim, h_dim, z_dim, gru_hidden_units=gru_hidden_units, 
-            dynamic_feats=dynamic_feats, variational=variational, 
+            1, h_dim, z_dim, gru_hidden_units=gru_hidden_units, 
+            dynamic_feats=dynamic_feats, variational=False, 
             dense_loss=False, use_predictor=False, use_graph_gru=False
         )
 
@@ -65,29 +85,31 @@ class TGCN(SerialTGCN):
 
 
     '''
-    Same as parent, but now we send each time step to a different worker
-    
-    TODO in the future, have the tensors preloaded on the worker machines
-    to cut down communication costs
+    Only need to tell workers which mask to use on the data, nothing else
+    is needed. 
     '''
-    def encode(self, xs, eis, mask_fn, ew_fn=None, start_idx=0):
+    def forward(self, mask_enum, include_h=False, h_0=None):
+        zs = self.encode(mask_enum)
+        return self.gru(torch.tanh(zs), h_0, include_h=include_h)
+
+    '''
+    Tell each remote GCN to encode their data. Data lives there to minimise 
+    net traffic 
+    '''
+    def encode(self, mask_enum):
         embed_futs = []
         
-        for i in range(len(eis)):    
-            ei = mask_fn(start_idx + i)
-            ew = None if not ew_fn else ew_fn(start_idx + i)
-            x = xs if not self.dynamic_feats else xs[start_idx + i]
-
+        for i in range(self.num_workers):    
             embed_futs.append(
                 _remote_method_async(
                     DDP.forward, 
                     self.gcns[i % self.num_workers],
-                    x, ei, ew=ew
+                    mask_enum
                 )
             )
     
         embeds = [f.wait() for f in embed_futs]
-        return torch.stack(embeds)
+        return torch.cat(embeds, dim=0)
 
     '''
     Distributed optimizer needs RRefs to params rather than the literal

@@ -153,7 +153,7 @@ if __name__ == '__main__':
     te_start = ld.DATE_OF_EVIL_LANL-1000
 
     # Load training data and train
-    data = ld.load_partial_lanl(start=0, is_test=False)
+    data = ld.load_partial_lanl(start=112000, end=149885, is_test=False)
     model = SerialTGCN(
         data.x.size(1), 32, 16,
         variational=True, gru_hidden_units=2

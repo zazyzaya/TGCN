@@ -14,6 +14,25 @@ from utils import fast_negative_sampling
 # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 '''
+Assumes edge indices have already been masked
+Literally just generates negative samples given a list of
+true positive samples. Doesn't even need embeddings bc assumes
+user already has those and the order doesn't change
+
+If using for validation, set num_pos to a list of lengths of neg
+samples to generate for balanced training 
+'''
+def lightweight_lp(eis, num_nodes, nratio=1, num_pos=None):
+    negs = []
+    pos = lambda i : eis[i].size(1) if type(num_pos) == type(None) else num_pos[i]
+
+    for i in range(len(eis)):
+        ei = eis[i] 
+        negs.append(fast_negative_sampling(ei, pos(i), num_nodes))
+
+    return negs
+
+'''
 Simplest one. Just returns eis and random negative sample
 for each time step AT each timestep
 '''

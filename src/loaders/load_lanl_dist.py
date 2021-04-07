@@ -12,6 +12,11 @@ LANL_FOLDER = '/mnt/raid0_24TB/isaiah/code/TGCN/src/data/split_LANL/'
 RED_LOG = '/mnt/raid0_24TB/datasets/LANL_2015/data_files/redteam.txt'
 
 class LANL_Data(Data):
+    # Enum like for masked function used by worker processes
+    TRAIN = 0
+    VAL = 1
+    TEST = 2
+
     def __init__(self, **kwargs):
         super(LANL_Data, self).__init__(**kwargs)
 
@@ -29,11 +34,6 @@ class LANL_Data(Data):
         # For readability
         self.all = self.te 
         self.all_w = self.te_w
-
-        # Enum like for masked function used by worker processes
-        self.TRAIN = 0
-        self.VAL = 1
-        self.TEST = 2
 
     def masked(self, idx, mask):
         if mask == self.TRAIN:
@@ -179,7 +179,8 @@ def load_partial_lanl(start=140000, end=156659, delta=1000, is_test=False):
 
             # Not totally necessary but I like the loading bar
             prog.update(ts-old_ts)
-            old_ts = ts 
+            old_ts = ts
+            curtime = ts 
 
             # Split edge list if delta is hit 
             # (assumes no missing timesteps in the log files)

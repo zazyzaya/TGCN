@@ -17,9 +17,14 @@ torch.set_num_threads(16)
 
 uses_priors = [VGRNN, PriorSerialTGCN]
 
+NUM_TESTS = 5
+
 LR = 0.01
 PATIENCE = 100
 MAX_DECREASE = 2
+
+KL_ANNEALING = 100
+KL_WEIGHT = 0.0001
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
@@ -38,12 +43,14 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10):
     for e in range(epochs):
         model.train()
         opt.zero_grad()
-        zs = model(data.x, data.eis[:SKIP], data.all)
+        zs = None
 
         # Get embedding
         if dynamic:
+            zs = model(data.x, data.eis[:SKIP], data.all)
             p,n,z = g.link_prediction(data, data.all, zs, include_tr=False, end=SKIP, nratio=nratio)
         else:
+            zs = model(data.x, data.eis[:SKIP], data.tr)
             p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, end=SKIP, nratio=nratio)        
 
         if not dynamic:
@@ -68,10 +75,7 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10):
             model.eval()
             if not dynamic:
                 zs = model(data.x, data.eis, data.tr)[SKIP:]
-            else:
-                zs = model(data.x, data.eis, data.all)[SKIP-1:]
-        
-            if not dynamic:
+
                 p,n,z = g.link_prediction(data, data.va, zs, start=SKIP)
                 st, sf = model.score_fn(p,n,z)
                 sscores = get_score(st, sf)
@@ -84,6 +88,7 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10):
                 avg = sscores[0] + sscores[1]
 
             else:
+                zs = model(data.x, data.eis, data.all)[SKIP-1:]
                 # VGRNN is providing priors, which are built from the previous timestep
                 # already, thus there is no need to shift the selected ei's as the 
                 # dynamic functions do 
@@ -147,11 +152,9 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10):
     with torch.no_grad():
         model.eval()
         if not dynamic:
-            zs = model(data.x, data.eis, data.tr)[SKIP:]
-        else:
-            zs = model(data.x, data.eis, data.all)[SKIP-1:]
+            _, h0 = model(data.x, data.eis[:SKIP], data.all, include_h=True)
+            zs = model(data.x, data.eis[SKIP:], data.tr, h_0=h0, start_idx=SKIP)
 
-        if not dynamic:
             p,n,z = g.link_prediction(data, data.te, zs, start=SKIP)
             t, f = model.score_fn(p,n,z)
             sscores = get_score(t, f)
@@ -166,6 +169,8 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10):
             return {'auc': sscores[0], 'ap': sscores[1]}
 
         else:
+            zs = model(data.x, data.eis, data.all)[SKIP-1:]
+
             if model.__class__ in uses_priors:
                 zs = zs[1:]
                 p,n,z = g.link_prediction(data, None, zs, start=SKIP)
@@ -267,7 +272,7 @@ if __name__ == '__main__':
         else: 
             raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
 
-        stats = [train(deepcopy(model), data, dynamic=args.static) for _ in range(10)]
+        stats = [train(deepcopy(model), data, dynamic=args.static) for _ in range(NUM_TESTS)]
 
         df = pd.DataFrame(stats)
         print(df.mean()*100)
