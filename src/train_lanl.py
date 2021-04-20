@@ -2,24 +2,23 @@ import argparse
 from copy import deepcopy
 import json 
 import time 
+import pickle
 
+import numpy as np
 import torch
 from torch.optim import Adam
 
 import generators as g
 import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
-from utils import get_score, tpr_fpr
+from utils import get_score, tpr_fpr, get_optimal_cutoff
 
 torch.set_num_threads(16)
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
 LR=0.001
 PATIENCE=5
-EPOCHS=5#1500
-
-DELTA = 8650
-DELTA_T = DELTA 
+EPOCHS=1500
 
 T_END = 1089597 # First 500 anoms
 
@@ -165,7 +164,34 @@ def train(data, model, dynamic, epochs=1500, nratio=10):
     print("Avg. TPE: %0.4fs" % (sum(times)/len(times)) )
     model = best[1]
     _, h0 = model(data.x, data.eis, data.all, ew_fn=data.all_w, include_h=True)
+
     return model, h0
+
+'''
+After model is trained, run on train data to find best cutoff point
+to mark as anomalous
+'''
+def get_cutoff(data, model, pred, nratio=10):
+    with torch.no_grad():
+        zs = model(data.x, data.eis, data.all, ew_fn=data.all_w)
+
+        # Get optimal cutoff point for LR
+        if pred:
+            p,n,z = g.dynamic_link_prediction(
+                data, data.all, zs, 
+                include_tr=False, nratio=nratio
+            )
+        else:
+            p,n,z = g.link_prediction(
+                data, data.all, zs,
+                include_tr=False, nratio=nratio
+            )
+
+        dt, df = model.score_fn(p,n,z)
+        
+    model.cutoff = get_optimal_cutoff(dt, df)
+    return model.cutoff
+
 
 def test(data, model, h0, pred, single_prior=False, fname='out'):
     with torch.no_grad():
@@ -186,11 +212,17 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
     future = 1 if pred else 0
 
     # Scores all edges and matches them with name/timestamp
+    y = []
+    y_hat = []
+
     edges = []
     for i in range(zs.size(0)):
         ei = data.eis[i+future]
         scores = model.decode(ei[0], ei[1], zs[i])
         names = data.format_edgelist(i+future)
+
+        y += data.ys[i+future]
+        y_hat.append(scores.squeeze(-1))
 
         for i in range(len(names)):
             edges.append(
@@ -201,9 +233,21 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
     edges.sort(key=lambda x : x[0])
     anoms = 0
     
+    # Compute TPR/FPR according to precalculated cutoff
+    y_hat = torch.cat(y_hat, dim=0).numpy()
+    y = np.array(y)
+    y_hat[y_hat > model.cutoff] = 0
+    y_hat[y_hat <= model.cutoff] = 1
+    
+    tpr = y_hat[y==1].mean() * 100
+    fpr = y_hat[y==0].mean() * 100
+    print("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
+
     tot_anoms = sum([sum(data.ys[i]) for i in range(data.T)])
 
     with open(fname+'.txt', 'w+') as f:
+        f.write("Using learned cutoff %0.4f:" % cutoff)
+        f.write("TPR: %0.2f, FPR: %0.2f\n\n" % (tpr, fpr))
         for i in range(len(edges)):
             e = edges[i]
             
@@ -226,7 +270,7 @@ if __name__ == '__main__':
     pred = True
 
     args = get_args()
-    te_start = ld.DATE_OF_EVIL_LANL-1#args['delta']
+    te_start = ld.DATE_OF_EVIL_LANL-1
 
     print(json.dumps(args, indent=2))
 
@@ -242,16 +286,28 @@ if __name__ == '__main__':
             variational=False, gru_hidden_units=1, use_w=True
         )
         model, h0 = train(data, model, pred, epochs=EPOCHS)
+        cutoff = get_cutoff(data, model, pred)
         
         if args['save']:
-            torch.save(model, MODELS + 'pretrained_LANL_' + args['load'] + '.model')
-            torch.save(h0, MODELS + 'LANL_h0_' + args['load'] + '.pkl')
+            mdata = {
+                'model': model,
+                'h0': h0
+            }
+
+            pickle.dump(
+                mdata, 
+                open(MODELS + 'LANL_' + args['load'] + '.pkl', 'wb+'), 
+                protocol=pickle.HIGHEST_PROTOCOL
+            )
+
 
     # Load testing data and test
     else:
-        model = torch.load(MODELS + 'pretrained_LANL_' + args['load'] + '.model')
-        h0 = torch.load(MODELS + 'LANL_h0_' + args['load'] + '.pkl')
-
+        mdata = pickle.load(open(MODELS + 'LANL_' + args['load'] + '.pkl', 'wb+'))
+        model = mdata['model']
+        h0 = mdata['h0']
+        cutoff = model.cutoff
+    
     data = ld.load_lanl_dist(
         min(8, (T_END-te_start)//args['tdelta']), 
         start=te_start, end=T_END, 

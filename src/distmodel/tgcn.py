@@ -25,7 +25,7 @@ class R_GAE(GAE):
 
     def __forward(self, mask):
         zs = []
-        for i in range(self.data.T):
+        for i in range(self.data.T-1):
             x = self.data.x 
             ei, ew = self.data.masked(i, mask)
             zs.append(
@@ -70,6 +70,9 @@ class GAE_DDP(DDP):
             sum(self.module.data.ys[i]) \
             for i in range(self.module.data.T)
         ])
+
+    def get_ys(self):
+        return self.module.ys
 
     def get_data(self):
         self.module.data.serialize()
@@ -167,6 +170,16 @@ class GAE_DDP(DDP):
             p,n,z = p[1:], n[1:], z[:-1]
         
         T = len(z)
+        
+        # Edge case for if each worker only has 1 
+        # Can only happen on the last worker if each worker has only 
+        # 1 delta. All others have overlap built in to prevent this
+        if T == 0:
+            print("%s returning null loss" % rpc.get_worker_info().name)
+            if self.module.training:
+                return torch.zeros(0)
+            else:
+                return torch.zeros(0), torch.zeros(0)
 
         p_scores = []
         n_scores = []
@@ -180,6 +193,7 @@ class GAE_DDP(DDP):
 
         if self.module.training:
             loss = self.nll(p_scores, n_scores)
+            print("%s returning loss" % rpc.get_worker_info().name)
             return loss
 
         else: 
@@ -200,7 +214,8 @@ def get_remote_gae(h_dim, loader, load_args):
 
 class TGCN(SerialTGCN):
     def __init__(self, remote_rrefs, h_dim, z_dim, 
-                gru_hidden_units=1, dynamic_feats=False):
+                gru_hidden_units=1, dynamic_feats=False,
+                pred=True):
         
         # X_dim doesn't matter, GAEs take care of it
         super(TGCN, self).__init__(
@@ -210,6 +225,7 @@ class TGCN(SerialTGCN):
         )
 
         self.dynamic_feats = dynamic_feats
+        self.pred = pred
         
         # Only difference is that the GCN is now many GCNs sharing params
         # across several computers/processors
@@ -275,6 +291,11 @@ class TGCN(SerialTGCN):
         start = 0 
         futs = []
 
+        # Need to send zs[start+1 : end+1] if using prediction
+        # instead of detection; this means sending self.len_from_each[i] + 1 
+        # to each worker
+        pred_add = 1 if self.pred else 0
+
         for i in range(self.num_workers):
             if single:
                 futs.append(
@@ -292,7 +313,7 @@ class TGCN(SerialTGCN):
                     _remote_method_async(
                         GAE_DDP.decode_test,
                         self.gcns[i],
-                        zs[start : end],
+                        zs[start : end+pred_add],
                         detailed=detailed
                     )
                 )
@@ -318,6 +339,12 @@ class TGCN(SerialTGCN):
     def __loss_or_score(self, zs, nratio, pred):
         futs = []
         start = 0 
+
+        # Need to send zs[start+1 : end+1] if using prediction
+        # instead of detection; this means sending self.len_from_each[i] + 1 
+        # to each worker
+        pred_add = 1 if self.pred else 0
+
         for i in range(self.num_workers):
             end = start + self.len_from_each[i]
             
@@ -325,7 +352,7 @@ class TGCN(SerialTGCN):
                 _remote_method_async(
                     GAE_DDP.calc_loss,
                     self.gcns[i],
-                    zs[start : end], nratio, pred 
+                    zs[start : end+pred_add], nratio, pred 
                 )
             ) 
             start = end 

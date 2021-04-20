@@ -2,6 +2,7 @@ import os
 import pickle
 import time
 
+import numpy as np
 import torch 
 import torch.distributed as dist 
 import torch.distributed.rpc as rpc 
@@ -14,31 +15,31 @@ import generators as g
 import loaders.load_lanl_dist as ld 
 from distmodel.utils import _remote_method_async
 from distmodel.tgcn import TGCN, GAE_DDP, get_remote_gae
-from utils import get_score, tpr_fpr
+from utils import get_score, tpr_fpr, get_optimal_cutoff
 
 DEFAULTS = {
-    'h_size': 32, 
-    'z_size': 16,
+    'h_size': 64, 
+    'z_size': 32,
     'lr': 0.001,
-    'epochs': 5,
+    'epochs': 1500,
     'min': 25,
     'patience': 5,
-    'n_gru': 1,
+    'n_gru': 2,
     'variational': False,
     'nratio': 10,
     'pred': True
 }
 
-WORKERS=4
-W_THREADS=2
-M_THREADS=1
+WORKERS=8
+W_THREADS=1
+M_THREADS=2
 
-DELTA=(60**2) #* 2
+DELTA=(60**2) * 2
 START=0
 END=ld.DATE_OF_EVIL_LANL-1
 
 TE_START=ld.DATE_OF_EVIL_LANL
-TE_END=1089597 # 500 anomalies
+TE_END=5011200 # Full  #1089597 # 500 anomalies
 TE_DELTA=DELTA
 
 torch.set_num_threads(1)
@@ -53,20 +54,32 @@ def get_work_units(num_workers, start, end, delta, isTe):
     # Puts minimum tasks on each worker with some remainder
     per_worker = [slices_needed // num_workers] * num_workers 
 
-    # Put remaining tasks on last workers since it's likely the 
-    # final timeslice is stopped halfway (ie it's less than a delta
-    # so giving it extra timesteps is more likely okay)
     remainder = slices_needed % num_workers 
     if remainder:
+        # Make sure worker 0 has at least 2 deltas to ensure it can 
+        # run prediction properly (if no remainder, the check on max_workers
+        # ensures worker0 has at least 2)
+        if per_worker[0] == 1:
+            per_worker[0] = 2
+            remainder -= 1
+
+        # Then put remaining tasks on last workers since it's likely the 
+        # final timeslice is stopped halfway (ie it's less than a delta
+        # so giving it extra timesteps is more likely okay)
         for i in range(num_workers, num_workers-remainder, -1):
             per_worker[i-1]+=1 
 
+    print("Tasks: %s" % str(per_worker))
     kwargs = []
     prev = start
     for i in range(num_workers):
             end_t = min(prev + delta*per_worker[i], end)
             kwargs.append({
-                'start': prev, 
+                # If pred this is the only way to ensure all edges are considered
+                # Otherwise the first delta on every worker is ignored (also note:
+                # this is why worker 0 must have at least 2 deltas, as it must
+                # start at 0)
+                'start': max(0, prev-delta),    
                 'end': end_t,
                 'delta': delta, 
                 'is_test': isTe,
@@ -204,7 +217,18 @@ def train(rrefs, **kwargs):
 
     print("Exiting train loop")
     print("Avg TPE: %0.4fs" % (sum(times)/len(times)) )
+    
+    get_cutoff(model, **kwargs)
     return model, zs[-1], h0
+
+def get_cutoff(model, **kwargs):
+    with torch.no_grad():
+        model.eval()
+        zs = model.forward(ld.LANL_Data.ALL, no_grad=True)
+        p,n = model.score_fn(zs, pred=kwargs['pred'])
+
+    model.cutoff = get_optimal_cutoff(p,n)
+    return model.cutoff
 
 def test(model, zs, h0, rrefs, **kwargs):
     # Load train data into workers
@@ -253,6 +277,7 @@ def test(model, zs, h0, rrefs, **kwargs):
     edges.sort(key=lambda x : x[0])
     anoms = 0
     
+    y, y_hat = [],[]
     with open('out.txt', 'w+') as f:
         for i in range(len(edges)):
             e = edges[i]
@@ -263,14 +288,35 @@ def test(model, zs, h0, rrefs, **kwargs):
                 stats = tpr_fpr(i, anoms, len(edges), tot_anoms)
                 f.write('[%d/%d] %0.4f %s  %s\n' % (i, len(edges), e[0], e[1], stats))
 
+                y.append(1)
+            else:
+                y.append(0)
+
+            y_hat.append(e[0])
+
+    # This is such a stupid way to do this. Maybe find a better one for the future
+    y = np.array(y)
+    y_hat = np.array(y_hat)
+    y_hat[y_hat > model.cutoff] = 0
+    y_hat[y_hat <= model.cutoff] = 1
+
+    tpr = y_hat[y==1].mean() * 100
+    fpr = y_hat[y==0].mean() * 100
+    print("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
+
+    with open('out.txt', 'a') as f:
+        f.write("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
+
     print(
         'Maximum anomaly scored %d out of %d edges'
         % (max_anom[0], len(edges))
     )
 
 if __name__ == '__main__':
-    world_size = WORKERS+1
+    max_workers = (END-START) // DELTA 
+    workers = min(max_workers, WORKERS)
 
+    world_size = workers+1
     mp.spawn(
         init_procs,
         args=(world_size,),

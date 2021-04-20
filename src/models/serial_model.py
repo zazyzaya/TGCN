@@ -102,12 +102,15 @@ class Recurrent(nn.Module):
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
                 dynamic_feats=False, variational=True, dense_loss=False,
-                use_predictor=False, use_graph_gru=False, use_w=True):
+                use_predictor=False, use_graph_gru=False, use_w=True,
+                neg_weight=0.5):
         super(SerialTGCN, self).__init__()
 
         self.weightless = not use_w
         self.kld_weight = 0
         self.dynamic_feats = dynamic_feats
+        self.neg_weight = neg_weight
+        self.cutoff = None
 
         self.gcn = GAE(
             x_dim, embed_dim=h_dim, 
@@ -222,7 +225,7 @@ class SerialTGCN(nn.Module):
         pos_loss = -torch.log(t_scores+EPS).mean()
         neg_loss = -torch.log(1-f_scores+EPS).mean()
 
-        return pos_loss + neg_loss
+        return (1-self.neg_weight) * pos_loss + self.neg_weight * neg_loss
 
 
     '''
@@ -272,7 +275,6 @@ class SerialTGCN(nn.Module):
         fscores = torch.cat(fscores, dim=0)
 
         return tscores, fscores
-            
 
     '''
     Returns inner product of src/dst nodes 
