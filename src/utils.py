@@ -22,18 +22,17 @@ def get_score(pscore, nscore):
 '''
 Calculates true positive rate and false positive rate given 
 the rank of this anomalous edge, 
-the number of anoms ranked higher than this one
+the number of anoms ranked equal or higher than this one
 the total number of edges
 the total number of anomalies
 '''
 def tpr_fpr(rank, n, total, tot_anom):
     # TPR is easy
-    tpr = n/rank
+    tpr = n/tot_anom
 
     # FPR is trickier 
     fp = rank-n
-    tn = total-rank-tot_anom
-    fpr = fp / (fp+tn)
+    fpr = fp / (fp+total)
 
     return "TPR: %0.4f, FPR: %0.4f" % (tpr*100, fpr*100)
 

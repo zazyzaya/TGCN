@@ -77,7 +77,7 @@ class Recurrent(nn.Module):
         )
 
         self.drop = nn.Dropout(0.25)
-        self.lin = nn.Linear(hidden_dim, out_dim)
+        self.lin = nn.Linear(hidden_dim, out_dim, bias=False)
         
         self.out_dim = out_dim 
 
@@ -102,9 +102,10 @@ class Recurrent(nn.Module):
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
                 dynamic_feats=False, variational=True, dense_loss=False,
-                use_predictor=False, use_graph_gru=False):
+                use_predictor=False, use_graph_gru=False, use_w=True):
         super(SerialTGCN, self).__init__()
 
+        self.weightless = not use_w
         self.kld_weight = 0
         self.dynamic_feats = dynamic_feats
 
@@ -154,7 +155,10 @@ class SerialTGCN(nn.Module):
         embeds = self.encode(xs, eis, mask_fn, ew_fn, start_idx)
 
         if type(self.gru) == type(None):
-            return embeds
+            if not include_h:
+                return embeds
+            else:
+                return embeds, None
         elif not self.graph_gru:
             return self.gru(torch.tanh(embeds), h_0, include_h=include_h)
         else:
@@ -173,7 +177,7 @@ class SerialTGCN(nn.Module):
         
         for i in range(len(eis)):    
             ei = mask_fn(start_idx + i)
-            ew = None if not ew_fn else ew_fn(start_idx + i)
+            ew = None if not ew_fn or self.weightless else ew_fn(start_idx + i)
             x = xs if not self.dynamic_feats else xs[start_idx + i]
 
             z = self.gcn(x,ei,ew)

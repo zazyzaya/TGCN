@@ -8,11 +8,11 @@ def _call_method(method, rref, *args, **kwargs):
 
 def _remote_method(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
-    return rpc.rpc_sync(rref.owner(), _call_method, args=args, kwargs=kwargs)
+    return rpc.rpc_sync(rref.owner(), _call_method, args=args, kwargs=kwargs, timeout=60*15)
 
 def _remote_method_async(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
-    return rpc.rpc_async(rref.owner(), _call_method, args=args, kwargs=kwargs)
+    return rpc.rpc_async(rref.owner(), _call_method, args=args, kwargs=kwargs, timeout=60*15)
 
 '''
 Because there are some remote parameters in the model,
