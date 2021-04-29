@@ -13,33 +13,39 @@ from torch.optim import Adam
 
 import generators as g
 import loaders.load_lanl_dist as ld 
-from distmodel.utils import _remote_method_async
-from distmodel.tgcn import TGCN, GAE_DDP, get_remote_gae
+from distmodel.utils import _remote_method_async, _remote_method
+from distmodel.tgcn_pred import TGCN, GAE_DDP, get_remote_gae
 from utils import get_score, tpr_fpr, get_optimal_cutoff
 
 DEFAULTS = {
     'h_size': 64, 
     'z_size': 32,
     'lr': 0.001,
-    'epochs': 1500,
+    'epochs': 1,
     'min': 25,
     'patience': 5,
     'n_gru': 2,
-    'variational': False,
     'nratio': 10,
-    'pred': True
+    'val_nratio': 1
 }
 
 WORKERS=8
 W_THREADS=1
-M_THREADS=2
+M_THREADS=1
 
-DELTA=(60**2) * 2
-START=0
-END=ld.DATE_OF_EVIL_LANL-1
+DELTA=int((60**2) * 2)
+TR_START=0
+TR_END=ld.DATE_OF_EVIL_LANL-DELTA*2
+
+VAL_START=TR_END
+VAL_END=VAL_START+DELTA*2
 
 TE_START=ld.DATE_OF_EVIL_LANL
-TE_END=5011200 # Full  #1089597 # 500 anomalies
+#TE_END = 228642 # First 20 anoms
+TE_END = 740104 # First 100 anoms
+#TE_END = 1089597 # First 500 anoms
+#TE_END = 5011200 # Full
+
 TE_DELTA=DELTA
 
 torch.set_num_threads(1)
@@ -129,9 +135,14 @@ def init_procs(rank, world_size, tr_args=DEFAULTS):
             rpc_backend_options=rpc_backend_options
         )
 
-        rrefs = init_workers(world_size-1, tr_args['h_size'], START, END, DELTA, False)
-        model, zs, h0 = train(rrefs, **tr_args)
-        #test(model, zs, h0, rrefs, **tr_args)
+        rrefs = init_workers(
+            world_size-1, tr_args['h_size'], 
+            TR_START, TR_END, DELTA, False
+        )
+
+        model, zs, h0 = train(rrefs, tr_args)
+        get_cutoff(model, h0, tr_args)
+        test(model, zs, h0, rrefs)
 
     # Slaves
     else:
@@ -156,8 +167,54 @@ def init_procs(rank, world_size, tr_args=DEFAULTS):
     # Block until all procs complete
     rpc.shutdown()
 
+'''
+Given a trained model, generate the optimal cutoff point using
+the validation data
+'''
+def get_cutoff(model, h0, kwargs):
+    # First load validation data onto one of the GCNs
+    _remote_method(
+        GAE_DDP.load_new_data,
+        model.gcns[0],
+        ld.load_lanl_dist,
+        {
+            'start': VAL_START,
+            'end': VAL_END,
+            'delta': DELTA,
+            'jobs': 2,
+            'is_test': False
+        }
+    )
 
-def train(rrefs, **kwargs):
+    # Then generate GCN embeds
+    model.eval()
+    zs = _remote_method(
+        GAE_DDP.forward,
+        model.gcns[0], 
+        ld.LANL_Data.ALL,
+        True
+    )
+
+    # Finally, generate actual embeds
+    with torch.no_grad():
+        zs = model.gru(
+            torch.tanh(zs),
+            h0
+        )
+
+    # Then score them
+    p,n = _remote_method(
+        GAE_DDP.score_edges, 
+        model.gcns[0],
+        zs, ld.LANL_Data.ALL,
+        kwargs['val_nratio']
+    )
+
+    # Finally, figure out the optimal cutoff score
+    model.cutoff = get_optimal_cutoff(p,n)
+
+
+def train(rrefs, kwargs):
     model = TGCN(
         rrefs, kwargs['h_size'], kwargs['z_size'], 
         gru_hidden_units=kwargs['n_gru']
@@ -171,11 +228,12 @@ def train(rrefs, **kwargs):
     best = (None, 0)
     no_progress = 0
     for e in range(kwargs['epochs']):
+        # Get loss and send backward
         model.train()
         with dist_autograd.context() as context_id:
             st = time.time()
             zs = model.forward(ld.LANL_Data.TRAIN)
-            loss = model.loss_fn(zs, nratio=kwargs['nratio'], pred=kwargs['pred'])
+            loss = model.loss_fn(zs, ld.LANL_Data.TRAIN, nratio=kwargs['nratio'])
 
             print("backward")
             dist_autograd.backward(context_id, [loss])
@@ -187,19 +245,16 @@ def train(rrefs, **kwargs):
             times.append(elapsed)
             print('[%d] Loss %0.4f  %0.2fs' % (e, loss.item(), elapsed))
 
-        # TODO put with torch.no_grad() in the dist models 
-        # as using it here only disables it for the master's model
+        # Get validation info to prevent overfitting
         model.eval()
         with torch.no_grad():
             zs = model.forward(ld.LANL_Data.TRAIN, no_grad=True)
-            p,n = model.score_fn(zs, pred=kwargs['pred'])
-            auc, ap = get_score(p,n)
+            v_loss = model.loss_fn(zs, ld.LANL_Data.VAL).item()
 
-            print("\tAUC: %0.4f  AP: %0.4f" % (auc, ap))
+            print("\t Val loss: %0.4f" % v_loss)
 
-            val_perf = auc+ap 
-            if val_perf > best[1]:
-                best = (model.save_states(), val_perf)
+            if v_loss > best[1]:
+                best = (model.save_states(), v_loss)
             else:
                 if e >= kwargs['min']:
                     no_progress += 1 
@@ -218,19 +273,10 @@ def train(rrefs, **kwargs):
     print("Exiting train loop")
     print("Avg TPE: %0.4fs" % (sum(times)/len(times)) )
     
-    get_cutoff(model, **kwargs)
     return model, zs[-1], h0
 
-def get_cutoff(model, **kwargs):
-    with torch.no_grad():
-        model.eval()
-        zs = model.forward(ld.LANL_Data.ALL, no_grad=True)
-        p,n = model.score_fn(zs, pred=kwargs['pred'])
 
-    model.cutoff = get_optimal_cutoff(p,n)
-    return model.cutoff
-
-def test(model, zs, h0, rrefs, **kwargs):
+def test(model, zs, h0, rrefs):
     # Load train data into workers
     ld_args = get_work_units(len(rrefs), TE_START, TE_END, DELTA, True)
     
@@ -247,73 +293,50 @@ def test(model, zs, h0, rrefs, **kwargs):
     # Wait until all workers have finished
     [f.wait() for f in futs]
 
-    '''
-    # Combines all subgraphs into one graph on rrefs[0]
-    _remote_method(
-        GAE_DDP.student_becomes_master,
-        rrefs[0],
-        rrefs[1:],
-        ld.reducer
-    )
-
-    # Only need one GCN now
-    model.gcns = [rrefs[0]]
-    model.num_workers = 1
-
-    # Hopefully GC will get the rest..
-    rrefs = rrefs[0]
-    '''
-
     with torch.no_grad():
         model.eval()
         zs = model(ld.LANL_Data.TEST, h_0=h0, no_grad=True)
 
     # Scores all edges and matches them with name/timestamp
     print("Scoring")
-    edges, tot_anoms = model.score_edges(zs, detailed=True)
-    max_anom = (0, 0.0)
+    scores, labels, readable = model.score_all(zs, detailed=True)
 
     print("Sorting")
-    edges.sort(key=lambda x : x[0])
-    anoms = 0
+    sorted = scores.argsort()
+
+    scores = scores[sorted]
+    labels = labels[sorted]
+    readable = [readable[i] for i in sorted]
+
+    tot_anoms = labels.sum().item()
+
+    # Classify using cutoff from earlier
+    classified = torch.zeros(labels.size())
+    classified[labels <= model.cutoff] = 1
     
-    y, y_hat = [],[]
+    n_anoms = 0
+    n_edges = scores.size(0)
     with open('out.txt', 'w+') as f:
-        for i in range(len(edges)):
-            e = edges[i]
-            
-            if e[1] == 1 or (type(e[1]) == str and 'ANOM' in e[1]):
-                anoms += 1
-                max_anom = (i, e[0])
-                stats = tpr_fpr(i, anoms, len(edges), tot_anoms)
-                f.write('[%d/%d] %0.4f %s  %s\n' % (i, len(edges), e[0], e[1], stats))
+        for i in (labels == 1).nonzero():    
+            n_anoms += 1
+            tpr = n_anoms / tot_anoms 
+            fpr = (i-n_anoms) / n_edges 
+            stats = 'TPR: %0.4f  FPR: %0.4f' % (tpr, fpr)
 
-                y.append(1)
-            else:
-                y.append(0)
+            f.write('[%d/%d] %0.4f %s  %s\n' % 
+                (i, n_edges, scores[i], readable[i], stats)
+            )
 
-            y_hat.append(e[0])
-
-    # This is such a stupid way to do this. Maybe find a better one for the future
-    y = np.array(y)
-    y_hat = np.array(y_hat)
-    y_hat[y_hat > model.cutoff] = 0
-    y_hat[y_hat <= model.cutoff] = 1
-
-    tpr = y_hat[y==1].mean() * 100
-    fpr = y_hat[y==0].mean() * 100
+    tpr = classified[labels==1].mean() * 100
+    fpr = classified[labels==0].mean() * 100
     print("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
 
     with open('out.txt', 'a') as f:
         f.write("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
 
-    print(
-        'Maximum anomaly scored %d out of %d edges'
-        % (max_anom[0], len(edges))
-    )
 
 if __name__ == '__main__':
-    max_workers = (END-START) // DELTA 
+    max_workers = (TR_END-TR_START) // DELTA 
     workers = min(max_workers, WORKERS)
 
     world_size = workers+1

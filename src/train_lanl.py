@@ -5,6 +5,7 @@ import time
 import pickle
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.optim import Adam
 
@@ -13,21 +14,31 @@ import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
 from utils import get_score, tpr_fpr, get_optimal_cutoff
 
-torch.set_num_threads(16)
+torch.set_num_threads(8)
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
+
+HOME = '/mnt/raid0_24TB/isaiah/code/TGCN/src/'
+MODELS = '/mnt/raid0_24TB/isaiah/code/TGCN/pretrained/'
 
 LR=0.001
 PATIENCE=5
 EPOCHS=1500
 
-T_END = 1089597 # First 500 anoms
+TR_START=0
+TR_END=ld.DATE_OF_EVIL_LANL-1
+
+TE_START=TR_END
+#TE_END = 228642 # First 20 anoms
+#TE_END = 740104 # First 100 anoms
+TE_END = 1089597 # First 500 anoms
+#TE_END = 5011200 # Full
 
 def get_args():
     p = argparse.ArgumentParser()
 
     p.add_argument(
         '-d', '--delta',
-        type=int, default=4
+        type=float, default=4
     )
     p.add_argument(
         '-t', '--tdelta',
@@ -48,11 +59,36 @@ def get_args():
         action='store_true'
     )
 
+    p.add_argument(
+        '-g', '--grus',
+        type=int, default=1
+    )
+
+    p.add_argument(
+        '--hidden',
+        type=int, default=32
+    )
+
+    p.add_argument(
+        '-e', '--embed',
+        type=int, default=16
+    )
+
+    p.add_argument(
+        '-p', '--predictive',
+        action='store_true'
+    )
+
     cleaned = {}
     args = p.parse_args()
+    #args = p.parse_args('-l 2hr -d 2'.split(' '))
 
     cleaned['single'] = args.single
     cleaned['save'] = args.save
+    cleaned['grus'] = args.grus
+    cleaned['hidden'] = args.hidden
+    cleaned['embed'] = args.embed
+    cleaned['predictive'] = args.predictive
     
     # Get delta and test delta
     cleaned['delta'] = args.delta 
@@ -67,7 +103,7 @@ def get_args():
         cleaned['load'] = args.load 
     else:
         cleaned['train'] = True 
-        cleaned['load'] = str(int(cleaned['delta'])) + 'hr'
+        cleaned['load'] = str(cleaned['delta']) + 'hr'
 
     # Convert to seconds 
     cleaned['delta'] *= 60**2
@@ -91,20 +127,19 @@ def train(data, model, dynamic, epochs=1500, nratio=10):
         model.train()
         opt.zero_grad()
         start = time.time()
-
-        # Get embeddings
-        zs = model(data.x, data.eis, data.tr, ew_fn=data.tr_w)
         
         # Generate positive and negative samples from this and the next time step
         if dynamic:
+            zs = model(data.x, data.eis, data.all, ew_fn=data.all_w)
             p,n,z = g.dynamic_link_prediction(
                 data, data.tr, zs, 
                 include_tr=False,
                 nratio=nratio
             )
         else:
+            zs = model(data.x, data.eis, data.tr, ew_fn=data.tr_w)
             p,n,z = g.link_prediction(
-                data, data.all, zs, 
+                data, data.tr, zs, 
                 include_tr=False,
                 nratio=nratio
             )
@@ -122,21 +157,22 @@ def train(data, model, dynamic, epochs=1500, nratio=10):
 
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis, data.tr, ew_fn=data.tr_w)
-        
             if not dynamic:
+                zs = model(data.x, data.eis, data.tr, ew_fn=data.tr_w)
                 p,n,z = g.link_prediction(data, data.va, zs)
                 sp, sf = model.score_fn(p,n,z)
                 sscores = get_score(sp,sf)
+                #vloss = model.loss_fn(p,n,z).item()
 
                 print(
-                    '[%d] Loss: %0.4f\t%0.4fs  \n\tDet %s\n' %
+                    '[%d] Loss: %0.4f \t%0.4fs  \n\tDet %s\n' %
                     (e, trloss, elapsed, fmt_score(sscores))
                 )
 
                 avg = sum(sscores)
 
             else:
+                zs = model(data.x, data.eis, data.all, ew_fn=data.all_w)
                 dp,dn,dz = g.dynamic_link_prediction(data, data.va, zs)
                 dt, df = model.score_fn(dp,dn,dz)
                 dscores = get_score(dt, df)
@@ -146,11 +182,11 @@ def train(data, model, dynamic, epochs=1500, nratio=10):
                 #dnscores = get_score(dt, df)
 
                 print(
-                    '[%d] Loss: %0.4f\t%0.4fs  \n\tPred %s ' % #\n\tNew %s\n' %
+                    '[%d] Loss: %0.4f \t%0.4fs  \n\tPred %s ' % #\n\tNew %s\n' %
                     (e, trloss, elapsed, fmt_score(dscores))#, fmt_score(dnscores) )
                 )
 
-                avg = sum(dscores) #+ sum(dnscores)            
+                avg = sum(dscores)
             
             if avg > best[0]:
                 best = (avg, deepcopy(model))
@@ -171,9 +207,9 @@ def train(data, model, dynamic, epochs=1500, nratio=10):
 After model is trained, run on train data to find best cutoff point
 to mark as anomalous
 '''
-def get_cutoff(data, model, pred, nratio=10):
+def get_cutoff(data, model, pred, h0=None, nratio=10):
     with torch.no_grad():
-        zs = model(data.x, data.eis, data.all, ew_fn=data.all_w)
+        zs, h0 = model(data.x, data.eis, data.all, ew_fn=data.all_w, h_0=h0, include_h=True)
 
         # Get optimal cutoff point for LR
         if pred:
@@ -189,8 +225,8 @@ def get_cutoff(data, model, pred, nratio=10):
 
         dt, df = model.score_fn(p,n,z)
         
-    model.cutoff = get_optimal_cutoff(dt, df)
-    return model.cutoff
+    model.cutoff = get_optimal_cutoff(dt, df, fw=0.6)
+    return model.cutoff, h0
 
 
 def test(data, model, h0, pred, single_prior=False, fname='out'):
@@ -219,34 +255,47 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
     for i in range(zs.size(0)):
         ei = data.eis[i+future]
         scores = model.decode(ei[0], ei[1], zs[i])
-        names = data.format_edgelist(i+future)
+        #names = data.format_edgelist(i+future)
 
         y += data.ys[i+future]
         y_hat.append(scores.squeeze(-1))
 
+        '''
         for i in range(len(names)):
             edges.append(
                 (scores[i].item(), names[i])
             )
+        '''
 
     max_anom = (0, 0.0)
     edges.sort(key=lambda x : x[0])
     anoms = 0
     
     # Compute TPR/FPR according to precalculated cutoff
-    y_hat = torch.cat(y_hat, dim=0).numpy()
+    y_hat = torch.cat(y_hat, dim=0).float().numpy()
     y = np.array(y)
-    y_hat[y_hat > model.cutoff] = 0
-    y_hat[y_hat <= model.cutoff] = 1
+    guesses = np.zeros(y_hat.shape)
+    default = np.zeros(y_hat.shape)
+
+    guesses[y_hat <= model.cutoff] = 1
+    default[y_hat <= 0.51] = 1
+    y_hat = guesses
     
     tpr = y_hat[y==1].mean() * 100
     fpr = y_hat[y==0].mean() * 100
-    print("TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
+    d_tpr = default[y==1].mean() * 100
+    d_fpr = default[y==0].mean() * 100 
 
-    tot_anoms = sum([sum(data.ys[i]) for i in range(data.T)])
+    print("Def. TPR: %0.2f, FPR: %0.2f" % (d_tpr, d_fpr))
+    print("Opt. TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
 
+    '''
+    tot_anoms = y.sum()
     with open(fname+'.txt', 'w+') as f:
-        f.write("Using learned cutoff %0.4f:" % cutoff)
+        f.write("Using default cutoff 0.51:\n")
+        f.write("TPR: %0.2f, FPR: %0.2f\n\n" % (d_tpr, d_fpr))
+
+        f.write("Using learned cutoff %0.4f:\n" % cutoff)
         f.write("TPR: %0.2f, FPR: %0.2f\n\n" % (tpr, fpr))
         for i in range(len(edges)):
             e = edges[i]
@@ -261,58 +310,91 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
         'Maximum anomaly scored %d out of %d edges'
         % (max_anom[0], len(edges))
     )
+    '''
 
-    
-if __name__ == '__main__':
-    HOME = '/mnt/raid0_24TB/isaiah/code/TGCN/src/'
-    MODELS = '/mnt/raid0_24TB/isaiah/code/TGCN/pretrained/'
-    
-    pred = True
+    return (tpr, fpr)
 
-    args = get_args()
-    te_start = ld.DATE_OF_EVIL_LANL-1
+'''
+Spins up a model and runs it once given user's input args
+'''
+def run_once(args):
+    val = (TR_END - TR_START) // 20
+    VAL_START = TR_END-val
+    VAL_END = TR_END
 
-    print(json.dumps(args, indent=2))
+    dim_str = '_%dh_%de' % (args['hidden'], args['embed']) \
+            if args['hidden'] != 32 or args['embed'] != 16 \
+            else ''
+
+    p_str = '_static' if not args['predictive'] else ''
+    fname = '%sLANL_%s_%dgru%s%s.pkl' % (MODELS, args['load'], args['grus'], dim_str, p_str)
+
+    pred = args['predictive']
 
     # Load training data and train
     if args['train']:
         data = ld.load_lanl_dist(
-            min(8, (te_start)//args['delta']), 
-            start=0, end=te_start, 
+            min(8, (VAL_START-TR_START)//args['delta']), 
+            start=TR_START, end=VAL_START,
             delta=args['delta']
         )
         model = SerialTGCN(
             data.x.size(1), 32, 16,
-            variational=False, gru_hidden_units=1, use_w=True
+            variational=False, gru_hidden_units=args['grus'], use_w=True, 
+            use_predictor=False, #neg_weight=0.75
         )
         model, h0 = train(data, model, pred, epochs=EPOCHS)
-        cutoff = get_cutoff(data, model, pred)
+
+        # Get a bit more data for validation of optimal cutoff
+        data = ld.load_lanl_dist(
+            2, start=VAL_START, end=VAL_END,
+            delta=args['delta']
+        )
+        cutoff, h0 = get_cutoff(data, model, pred, h0)
         
         if args['save']:
-            mdata = {
-                'model': model,
-                'h0': h0
-            }
-
             pickle.dump(
-                mdata, 
-                open(MODELS + 'LANL_' + args['load'] + '.pkl', 'wb+'), 
-                protocol=pickle.HIGHEST_PROTOCOL
+                {'model': model, 'h0': h0},
+                open(fname, 'wb+')
             )
-
 
     # Load testing data and test
     else:
-        mdata = pickle.load(open(MODELS + 'LANL_' + args['load'] + '.pkl', 'wb+'))
-        model = mdata['model']
-        h0 = mdata['h0']
-        cutoff = model.cutoff
+        sv = pickle.load(open(fname, 'rb'))
+        model = sv['model']
+        h0 = sv['h0']
+        
+        # Get a bit more data for validation of optimal cutoff
+        data = ld.load_lanl_dist(
+            min(8, (VAL_END-VAL_START)//args['delta']),
+            start=VAL_START, end=VAL_END,
+            delta=args['delta']
+        )
+        cutoff, h0 = get_cutoff(data, model, pred, h0)
     
     data = ld.load_lanl_dist(
-        min(8, (T_END-te_start)//args['tdelta']), 
-        start=te_start, end=T_END, 
+        min(8, (TE_END-TE_START)//args['tdelta']), 
+        start=TE_START, end=TE_END, 
         is_test=True, delta=args['tdelta']
     )
-    test(
+    
+    return test(
         data, model, h0, pred, fname=args['load'], single_prior=args['single']
     )
+
+    
+if __name__ == '__main__':
+    args = get_args()
+    print(json.dumps(args, indent=2))
+
+    if args['train']:
+        stats = [run_once(args) for _ in range(5)]
+        stats = pd.DataFrame(stats, columns=['TPR', 'FPR'])
+        stats = pd.DataFrame([stats.mean(), stats.sem()], index=['mean', 'std'])
+
+        with open('lanl_stats.txt', 'a') as f:
+            f.write(json.dumps(args, indent=2))
+            f.write('\n'+str(stats)+'\n\n')
+
+    else:
+        run_once(args)

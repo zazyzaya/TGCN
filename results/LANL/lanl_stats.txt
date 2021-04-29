@@ -1,0 +1,259 @@
+##### Non-predictive #####
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 7200,
+  "tdelta": 7200,
+  "train": true,
+  "load": "2.0hr"
+}
+            TPR       FPR
+mean  90.294118  2.063779
+std    2.270948  0.261773
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 3600,
+  "tdelta": 3600,
+  "train": true,
+  "load": "1.0hr"
+}
+            TPR       FPR
+mean  84.571429  1.738756
+std    3.679802  0.182319
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 1800,
+  "tdelta": 1800,
+  "train": true,
+  "load": "0.5hr"
+}
+            TPR       FPR
+mean  89.181818  1.673689
+std    1.795055  0.170868
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 900,
+  "tdelta": 900,
+  "train": true,
+  "load": "0.25hr"
+}
+            TPR       FPR
+mean  87.699115  2.061563
+std    2.221025  0.183308
+
+
+##### Predictive #####
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 7200,
+  "tdelta": 7200,
+  "train": true,
+  "load": "2.0hr"
+}
+            TPR       FPR
+mean  58.913043  1.804746
+std    7.953373  0.541741
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 3600,
+  "tdelta": 3600,
+  "train": true,
+  "load": "1.0hr"
+}
+            TPR       FPR
+mean  75.600000  1.475001
+std    4.331282  0.072787
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 1800,
+  "tdelta": 1800,
+  "train": true,
+  "load": "0.5hr"
+}
+            TPR       FPR
+mean  84.339623  2.321780
+std    7.902035  0.279999
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 900,
+  "tdelta": 900,
+  "train": true,
+  "load": "0.25hr"
+}
+            TPR       FPR
+mean  86.545455  2.788493
+std    3.741657  0.397350
+
+##### 2 GRU #####
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 3600,
+  "tdelta": 3600,
+  "train": true,
+  "load": "1.0hr"
+}
+            TPR       FPR
+mean  82.476190  1.324796
+std    3.321066  0.146100{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 900,
+  "tdelta": 900,
+  "train": true,
+  "load": "0.25hr"
+}
+            TPR       FPR
+mean  67.433628  2.404314
+std   11.434094  0.263640
+
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 1800,
+  "tdelta": 1800,
+  "train": true,
+  "load": "0.5hr"
+}
+            TPR       FPR
+mean  90.363636  2.430678
+std    2.897705  0.229477
+
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "delta": 7200,
+  "tdelta": 7200,
+  "train": true,
+  "load": "2.0hr"
+}
+            TPR       FPR
+mean  53.529412  2.602693
+std   10.675026  0.462412
+
+##### 2 GRU Pred #####
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 900,
+  "tdelta": 900,
+  "train": true,
+  "load": "0.25hr"
+}
+            TPR       FPR
+mean  95.272727  2.645644
+std    1.585054  0.162502
+
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 1800,
+  "tdelta": 1800,
+  "train": true,
+  "load": "0.5hr"
+}
+            TPR       FPR
+mean  93.584906  2.228156
+std    2.674990  0.219594
+
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 3600,
+  "tdelta": 3600,
+  "train": true,
+  "load": "1.0hr"
+}
+            TPR       FPR
+mean  64.600000  1.545484
+std   14.654692  0.166683
+
+{
+  "single": false,
+  "save": false,
+  "grus": 2,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": true,
+  "delta": 7200,
+  "tdelta": 7200,
+  "train": true,
+  "load": "2.0hr"
+}
+            TPR       FPR
+mean  71.304348  2.041080
+std    9.072018  0.283832
+

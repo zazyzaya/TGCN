@@ -71,16 +71,20 @@ as the threshold changes (abs of TPR-(1-FPR))
 
 Please do this on TRAIN data, not TEST -- you cheater
 '''
-def get_optimal_cutoff(pscore, nscore):
+def get_optimal_cutoff(pscore, nscore, fw=0.5):
     ntp = pscore.size(0)
     ntn = nscore.size(0)
+
+    tw = 1-fw
 
     score = torch.cat([pscore, nscore]).numpy()
     labels = np.zeros(ntp + ntn, dtype=np.long)
     labels[:ntp] = 1
 
     fpr, tpr, th = roc_curve(labels, score)
-    fn = np.abs(tpr-(1-fpr))
+    fn = np.abs(tw*tpr-fw*(1-fpr))
     best = np.argmin(fn, 0)
 
+    print("Optimal cutoff %0.4f achieves TPR: %0.2f FPR: %0.2f on train data" 
+        % (th[best], tpr[best], fpr[best]))
     return th[best]

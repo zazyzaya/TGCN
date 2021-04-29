@@ -13,6 +13,10 @@ FILE_DELTA = 10000
 LANL_FOLDER = '/mnt/raid0_24TB/isaiah/code/TGCN/src/data/split_LANL/'
 RED_LOG = '/mnt/raid0_24TB/datasets/LANL_2015/data_files/redteam.txt'
 
+COMP = 0
+USR = 1
+SPEC = 2
+
 class LANL_Data(Data):
     # Enum like for masked function used by worker processes
     TRAIN = 0
@@ -37,6 +41,8 @@ class LANL_Data(Data):
         # For readability
         self.all = self.te 
         self.all_w = self.te_w
+
+        self.p_fns = [self.tr, self.va, self.te]
 
     '''
     Gets rid of lambdas in local fields so data obj can be passed
@@ -112,7 +118,7 @@ def normalized(ew_ts):
     return ews
 
 def load_lanl_dist(workers, start=0, end=635015, delta=8640, is_test=False, ew_fn=std_edge_w):
-    if workers == 1:
+    if workers <= 1:
         return load_partial_lanl(start, end, delta, is_test, ew_fn)
 
     num_slices = ((end - start) // delta) + 1 
@@ -239,8 +245,24 @@ def make_data_obj(eis, tr_set_partition_end, ew_fn, **kwargs):
     # Known value for LANL
     cl_cnt = 17684
 
-    # No node feats really
+    # Use computer/user/special as features on top of nid
     x = torch.eye(cl_cnt+1)
+    feats = torch.zeros(cl_cnt+1, 3)
+
+    if 'node_map' in kwargs:
+        nm = kwargs['node_map']
+    else:
+        nm = pickle.load(open(LANL_FOLDER+'nmap.pkl', 'rb'))
+
+    for i in range(len(nm)):
+        if nm[i][0] == 'C':
+            feats[i][COMP] = 1
+        elif nm[i][0] == 'U':
+            feats[i][USR] = 1
+        else:
+            feats[i][SPEC] = 1
+
+    x = torch.cat([x,feats], dim=1)
     
     # Build time-partitioned edge lists
     eis_t = []
@@ -292,7 +314,12 @@ def load_partial_lanl(start=140000, end=156659, delta=8640, is_test=False, ew_fn
     fmt_line = lambda x : (int(x[0]), int(x[1]), int(x[2][:-1]))
     def get_next_anom(rf):
         line = rf.readline().split(',')
-        return (int(line[0]), line[2], line[3])
+        
+        # Check we haven't reached EOF
+        if len(line) > 1:
+            return (int(line[0]), line[2], line[3])
+        else:
+            return float('inf'), float('inf'), float('inf')
 
     # For now, just keeps one copy of each edge. Could be
     # modified in the future to add edge weight or something

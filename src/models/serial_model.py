@@ -77,7 +77,7 @@ class Recurrent(nn.Module):
         )
 
         self.drop = nn.Dropout(0.25)
-        self.lin = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.lin = nn.Linear(hidden_dim, out_dim)#, bias=False)
         
         self.out_dim = out_dim 
 
@@ -136,7 +136,7 @@ class SerialTGCN(nn.Module):
 
         self.use_predictor = use_predictor
         self.predictor = nn.Sequential(
-            nn.Linear(z_dim*2, 1),
+            nn.Linear(z_dim, 1),
             nn.Sigmoid()
         ) if use_predictor else None
 
@@ -197,6 +197,7 @@ class SerialTGCN(nn.Module):
         x = self.gru(
             torch.tanh(embeds)
         )
+
         if self.graph_gru:
             x = self.drop(x)
             return self.gru_lin(x)
@@ -206,14 +207,18 @@ class SerialTGCN(nn.Module):
     '''
     Inner product given edge list and embeddings at time t
     '''
-    def decode(self, z, src, dst):
+    def decode(self, src, dst, z, as_probs=False):
         if self.use_predictor:
             return self.predictor(
-                torch.cat([z[src], z[dst]], dim=1)
+                z[src] * z[dst]
             )
         
         dot = (z[src] * z[dst]).sum(dim=1)
-        return self.sig(dot) 
+        logits = self.sig(dot)
+
+        if as_probs:
+            return self.__logits_to_probs(logits)
+        return logits
 
 
     '''
@@ -256,8 +261,10 @@ class SerialTGCN(nn.Module):
     '''
     Get scores for true/false embeddings to find ROC/AP scores.
     Essentially the same as loss_fn but with no NLL 
+
+    Returns logits unless as_probs is True
     '''
-    def score_fn(self, ts, fs, zs):
+    def score_fn(self, ts, fs, zs, as_probs=False):
         tscores = []
         fscores = []
 
@@ -274,14 +281,11 @@ class SerialTGCN(nn.Module):
         tscores = torch.cat(tscores, dim=0)
         fscores = torch.cat(fscores, dim=0)
 
-        return tscores, fscores
+        if as_probs:
+            tscores=self.__logits_to_probs(tscores)
+            fscores=self.__logits_to_probs(fscores)
 
-    '''
-    Returns inner product of src/dst nodes 
-    '''
-    def decode(self, src, dst, z):
-        dot = (z[src] * z[dst]).sum(dim=1)
-        return self.sig(dot)
+        return tscores, fscores
 
 
     '''
@@ -307,6 +311,14 @@ class SerialTGCN(nn.Module):
         dot = (zsrc * zdst).sum(dim=1)
         return self.sig(dot)
 
+
+    '''
+    Converts from log odds (what the encode method outputs) to probabilities
+    '''
+    def __logits_to_probs(self, logits):
+        odds = torch.exp(logits)
+        probs = odds.true_divide(1+odds)
+        return probs
 
     '''
     Helper function for batched loss. Uses gather to grab rows from 

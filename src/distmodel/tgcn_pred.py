@@ -13,7 +13,7 @@ Extended so data can live in these objects to minimize
 needless communication 
 '''
 class R_GAE(GAE):
-    def __init__(self, h_dim, loader, load_args, tail=False):
+    def __init__(self, h_dim, loader, load_args):
         print(rpc.get_worker_info().name + ": Loading ts from %d to %d" % (load_args['start'], load_args['end']))
 
         jobs = load_args.pop('jobs')
@@ -22,17 +22,13 @@ class R_GAE(GAE):
         
         self.data = data 
         self.x_dim = data.x.size(1)
-        self.tail = tail
 
     def __forward(self, mask):
         zs = []
 
         # The data for the next ei lives in each R_GAE for calculating loss
         # but we don't actually need the embeddings for it. 
-        # However, it is useful to have it for the final timeslice, as we 
-        # can use it to have a more up-to-date h0 to use when testing
-        to_process = self.data.T-1 if not self.tail else self.data.T
-        for i in range(to_process):
+        for i in range(self.data.T-1):
             x = self.data.x 
             ei, ew = self.data.masked(i, mask)
             zs.append(
@@ -57,29 +53,19 @@ class R_GAE(GAE):
 '''
 Allows you to call methods other than forward from the 
 RPC remote method
+
+I'm just assuming the model will always be predictive, so 
+I'm cleaning this up a bit
 '''
 class GAE_DDP(DDP):
-    '''
-    Used to generate negative edges by master
-    (Unaccessable with DDP... TODO)
-    '''
-    def get_eis(self, mask_enum):
-        return [
-            self.module.data.masked(i, mask_enum)[0]
-            for i in range(self.module.data.T)
-        ]
-
-    def get_x_dim(self):
-        return self.module.x_dim
-
     def get_tot_anoms(self):
         return sum([
             sum(self.module.data.ys[i]) \
-            for i in range(self.module.data.T)
+            for i in range(self.module.data.T-1)
         ])
 
     def get_ys(self):
-        return self.module.ys
+        return self.module.ys[:-1]
 
     def get_data(self):
         self.module.data.serialize()
@@ -116,32 +102,38 @@ class GAE_DDP(DDP):
 
     '''
     Given node embeddings, return edge likelihoods for 
-    all subgraphs held by this model, as well as edge names
+    all subgraphs held by this model
 
     If detailed, uses full string for edge
     Else, just returns edge label 
     '''
-    def decode_test(self, zs, detailed, pred, single=False):
-        edges = []
-        offset = 1 if pred else 0
+    def decode_all(self, zs):
+        labels = []
+        scores = []
 
         with torch.no_grad():
-            for i in range(self.module.data.T-offset):
-                if single:
-                    z = zs
-                else:
-                    z = zs[i]
-                
-                scores = self.decode(self.module.data.eis[i+offset], z)
-                names = self.module.data.ys[i+offset] if not detailed \
-                    else self.module.data.format_edgelist(i+offset)
-
-                for j in range(len(names)):
-                    edges.append(
-                        (scores[j].item(), names[j])
+            for i in range(self.module.data.T-1):    
+                scores.append(
+                    self.decode(
+                        self.module.data.eis[i+1], 
+                        zs[i]
                     )
+                )
 
-        return edges
+                labels += self.module.data.ys[i+1]
+
+        return torch.cat(scores, dim=0), torch.tensor(labels)
+
+    '''
+    Generates human-readable labels for all edges held by this worker
+    that are decodable (edges[1:])
+    '''
+    def get_names(self):
+        names = []
+        for i in range(1,self.module.data.T):
+            names += self.module.data.format_edgelist(i)
+
+        return names
 
     def decode(self, e,z):
         src,dst = e 
@@ -154,31 +146,32 @@ class GAE_DDP(DDP):
         pos_loss = -torch.log(t_scores+EPS).mean()
         neg_loss = -torch.log(1-f_scores+EPS).mean()
 
-        return pos_loss + neg_loss
+        return (pos_loss + neg_loss) * 0.5
     
+    def __get_neg_edges(self, z, partition, nratio):
+        p,n,_ = g.link_prediction(
+            self.module.data, self.module.data.p_fns[partition],
+            z, start=1, nratio=nratio
+        )
+
+        T = len(z)
+        assert not T > len(p), \
+            rpc.get_worker_info().name + ' recieved more embeddings than subgraphs'
+        assert not T < len(p), \
+            rpc.get_worker_info().name + ' recieved fewer embeddings than subgraphs'
+
+        return p,n
 
     '''
     Same as running calc loss in eval mode, but scores all nodes
+    Assumes zs are already adjusted so z[0] predicts edge[1]
     '''
-    def score_edges(self, z, nratio, pred, partition):
-        # Generate negative edges
-        n = g.lightweight_lp(
-            self.module.data.masked(partition),
-            self.module.data.x.size(0),
-            nratio=nratio
-        )
-
-        p = self.module.data.eis 
-
-        if pred: 
-            p,n,z = p[1:], n[1:], z[:-1]
-        
-        T = len(z)
-        
+    def score_edges(self, z, partition, nratio):
+        p,n = self.__get_neg_edges(z, partition, nratio)
         p_scores = []
         n_scores = []
 
-        for i in range(T):
+        for i in range(len(z)):
             p_scores.append(self.decode(p[i], z[i]))
             n_scores.append(self.decode(n[i], z[i]))
 
@@ -191,61 +184,21 @@ class GAE_DDP(DDP):
     Rather than sending edge index to master, calculate loss 
     on workers all at once 
     '''
-    def calc_loss(self, zs, nratio, pred):
-        # Uses masked val edges if module is set to eval()
-        if self.module.training:
-            partition = self.module.data.tr 
-        else:
-            partition = self.module.data.va 
+    def calc_loss(self, z, partition, nratio):
+        # First get edge scores
+        p_scores, n_scores = self.score_edges(z, partition, nratio)
 
-        # Generate negative edges
-        p,n,z = g.link_prediction(
-            self.module.data, partition, zs,
-            include_tr = not self.module.training, 
-            nratio=nratio 
-        )
-
-        if pred: 
-            p,n,z = p[1:], n[1:], z[:-1]
-        
-        T = len(z)
-        
-        # Edge case for if each worker only has 1 
-        # Can only happen on the last worker if each worker has only 
-        # 1 delta. All others have overlap built in to prevent this
-        if T == 0:
-            print("%s returning null loss" % rpc.get_worker_info().name)
-            if self.module.training:
-                return torch.zeros(0)
-            else:
-                return torch.zeros(0), torch.zeros(0)
-
-        p_scores = []
-        n_scores = []
-
-        for i in range(T):
-            p_scores.append(self.decode(p[i], z[i]))
-            n_scores.append(self.decode(n[i], z[i]))
-
-        p_scores = torch.cat(p_scores, dim=0)
-        n_scores = torch.cat(n_scores, dim=0)
-
-        if self.module.training:
-            loss = self.nll(p_scores, n_scores)
-            print("%s returning loss" % rpc.get_worker_info().name)
-            return loss
-
-        else: 
-            return p_scores, n_scores
+        # Then run NL loss on them
+        return self.nll(p_scores, n_scores)
 
 
 '''
 Called by worker processes to initialize their models
 The RRefs to these models are then passed to the TGCN
 '''
-def get_remote_gae(h_dim, loader, load_args, is_tail): 
+def get_remote_gae(h_dim, loader, load_args): 
     model = R_GAE(
-        h_dim, loader, load_args, tail=is_tail
+        h_dim, loader, load_args
     )
 
     return GAE_DDP(model)    
@@ -253,8 +206,7 @@ def get_remote_gae(h_dim, loader, load_args, is_tail):
 
 class TGCN(SerialTGCN):
     def __init__(self, remote_rrefs, h_dim, z_dim, 
-                gru_hidden_units=1, dynamic_feats=False,
-                pred=True):
+                gru_hidden_units=1, dynamic_feats=False):
         
         # X_dim doesn't matter, GAEs take care of it
         super(TGCN, self).__init__(
@@ -262,9 +214,6 @@ class TGCN(SerialTGCN):
             dynamic_feats=dynamic_feats, variational=False, 
             dense_loss=False, use_predictor=False, use_graph_gru=False
         )
-
-        self.dynamic_feats = dynamic_feats
-        self.pred = pred
         
         # Only difference is that the GCN is now many GCNs sharing params
         # across several computers/processors
@@ -282,6 +231,7 @@ class TGCN(SerialTGCN):
     def forward(self, mask_enum, include_h=False, h_0=None, no_grad=False):
         futs = self.encode(mask_enum, no_grad)
 
+        '''
         # Run through RNN as embeddings come in 
         # Also prevents sequences that are super long from being encoded
         # all at once. (This is another reason to put extra tasks on the
@@ -294,16 +244,23 @@ class TGCN(SerialTGCN):
             )
 
             zs.append(z)
+        '''
+        zs = [f.wait() for f in futs]
 
         # May as well do this every time, not super expensive
         self.len_from_each = [
             embed.size(0) for embed in zs
         ]
 
+        zs, h_0 = self.gru(
+            torch.tanh(torch.cat(zs, dim=0)),
+            h_0, include_h=True
+        )
+
         if include_h:
-            return torch.cat(zs, dim=0), h_0 
+            return zs, h_0 
         else:
-            return torch.cat(zs, dim=0)
+            return zs
 
     '''
     Tell each remote GCN to encode their data. Data lives there to minimise 
@@ -326,65 +283,55 @@ class TGCN(SerialTGCN):
     '''
     Has the distributed models score and label all of their edges
     '''
-    def score_edges(self, zs, detailed=False, single=False):
+    def score_all(self, zs, detailed=False):
         start = 0 
+        readable=None
         futs = []
-
-        # Need to send zs[start+1 : end+1] if using prediction
-        # instead of detection; this means sending self.len_from_each[i] + 1 
-        # to each worker
-        pred_add = 1 if self.pred else 0
 
         for i in range(self.num_workers):
-            if single:
-                futs.append(
-                    _remote_method_async(
-                        GAE_DDP.decode_test,
-                        self.gcns[i],
-                        zs,
-                        self.pred,
-                        detailed=detailed,
-                        single=single
-                    )
+            end = start + self.len_from_each[i]
+            futs.append(
+                _remote_method_async(
+                    GAE_DDP.decode_all,
+                    self.gcns[i],
+                    zs[start : end]
                 )
-            else:
-                end = start + self.len_from_each[i]
-                futs.append(
-                    _remote_method_async(
-                        GAE_DDP.decode_test,
-                        self.gcns[i],
-                        zs[start : end],
-                        self.pred,
-                        detailed=detailed
-                    )
-                )
-                start = end 
+            )
+            start = end 
 
         # Concatenate all returned edge lists/scores
-        rets = []
+        scores, labels = [],[]
         for f in futs:
-            rets += f.wait() 
+            score, label = f.wait() 
+            scores.append(score)
+            labels.append(label)
+             
+        scores = torch.cat(scores, dim=0).squeeze()
+        labels = torch.cat(labels, dim=0).squeeze()
 
-        tot_anoms = sum(
-            [_remote_method(
-                GAE_DDP.get_tot_anoms, rref
-            ) for rref in self.gcns]
-        )    
+        if detailed:
+            futs = [
+                _remote_method_async(
+                    GAE_DDP.get_names,
+                    self.gcns[i]
+                )
+                for i in range(self.num_workers)
+            ]
 
-        return rets, tot_anoms
+            readable = sum(
+                [f.wait() for f in futs],
+                []
+            )
+
+        return scores, labels, readable
 
 
     '''
-    Returns either NLL or just edge scores if the model is in eval mode
+    Runs NLL on each worker machine given the generated embeds
     '''
-    def __loss_or_score(self, zs, nratio, pred):
+    def loss_fn(self, zs, partition, nratio=1):
         futs = []
         start = 0 
-
-        # Need to send zs[start+1 : end+1] if using prediction
-        # instead of detection; this means sending self.len_from_each[i] + 1 
-        # to each worker
-        pred_add = 1 if self.pred else 0
 
         for i in range(self.num_workers):
             end = start + self.len_from_each[i]
@@ -393,32 +340,34 @@ class TGCN(SerialTGCN):
                 _remote_method_async(
                     GAE_DDP.calc_loss,
                     self.gcns[i],
-                    zs[start : end], nratio, pred 
+                    zs[start : end], 
+                    partition, nratio
                 )
             ) 
             start = end 
 
-        return futs 
-
-
-    '''
-    Runs NLL on each worker machine given the generated embeds
-    '''
-    def loss_fn(self, zs, nratio=1, pred=True):
-        assert self.training, \
-            "Module must be in training mode for loss_fn to work as expected"
-
-        futs = self.__loss_or_score(zs, nratio, pred)
         return torch.stack([f.wait() for f in futs]).mean() 
 
     '''
-    Gets edge scores from dist modules. Assumes model is in eval mode
+    Gets edge scores from dist modules, and negative edges
     '''
-    def score_fn(self, zs, nratio=1, pred=True):
-        assert not self.training, \
-            "Module must be in evaluation mode for score_fn to work as expected"
+    def score_edges(self, zs, partition, nratio=1):
+        futs = []
+        start = 0 
 
-        futs = self.__loss_or_score(zs, nratio, pred)
+        for i in range(self.num_workers):
+            end = start + self.len_from_each[i]
+            
+            futs.append(
+                _remote_method_async(
+                    GAE_DDP.score_,
+                    self.gcns[i],
+                    zs[start : end], 
+                    partition, nratio
+                )
+            ) 
+            start = end 
+
         pos, neg = [], []
         for f in futs:
             p,n = f.wait()
