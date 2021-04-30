@@ -246,7 +246,6 @@ def make_data_obj(eis, tr_set_partition_end, ew_fn, **kwargs):
     cl_cnt = 17684
 
     # Use computer/user/special as features on top of nid
-    x = torch.eye(cl_cnt+1)
     feats = torch.zeros(cl_cnt+1, 3)
 
     if 'node_map' in kwargs:
@@ -262,7 +261,7 @@ def make_data_obj(eis, tr_set_partition_end, ew_fn, **kwargs):
         else:
             feats[i][SPEC] = 1
 
-    x = torch.cat([x,feats], dim=1)
+    x = feats
     
     # Build time-partitioned edge lists
     eis_t = []
@@ -383,23 +382,31 @@ def load_partial_lanl(start=140000, end=156659, delta=8640, is_test=False, ew_fn
             # Split edge list if delta is hit 
             # (assumes no missing timesteps in the log files)
             if (curtime != ts and (curtime-ts) % delta == 0) or ts >=end:
-                ei = list(zip(*edges_t.keys()))
-                edges.append(ei)
+                if len(edges_t):
+                    ei = list(zip(*edges_t.keys()))
+                    edges.append(ei)
 
-                y,ew = list(zip(*edges_t.values()))
-                ews.append(ew)
+                    y,ew = list(zip(*edges_t.values()))
+                    ews.append(ew)
 
-                if is_test:
-                    ys.append(y)
+                    if is_test:
+                        ys.append(y)
 
-                edges_t = {}
-                times.append(str(curtime) + '-' + str(ts-1))
+                    edges_t = {}
+                    times.append(str(curtime) + '-' + str(ts-1))
+
+                # If the list was empty, just keep going if you can
                 curtime = ts 
 
                 # Break out of loop after saving if hit final timestep
                 if ts >= end:
                     keep_reading = False 
                     break 
+
+            # Skip self-loops
+            if et[0] == et[1]:
+                line = in_f.readline()
+                continue
 
             # Mark edge as anomalous if it is 
             if ts == next_anom[0] and is_anomalous(src, dst, next_anom):

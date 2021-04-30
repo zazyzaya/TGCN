@@ -1,4 +1,4 @@
-##### Non-predictive #####
+###### Static LP #####
 {
   "single": false,
   "save": false,
@@ -6,14 +6,83 @@
   "hidden": 32,
   "embed": 16,
   "predictive": false,
+  "node2vec": false,
+  "delta": 21600,
+  "tdelta": 21600,
+  "train": true,
+  "load": "6.0hr"
+}
+            TPR       FPR
+mean  91.368421  1.271115
+std    2.291741  0.222378
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "node2vec": false,
+  "delta": 18000,
+  "tdelta": 18000,
+  "train": true,
+  "load": "5.0hr"
+}
+            TPR       FPR
+mean  90.105263  2.410058
+std    4.631579  0.568223
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "node2vec": false,
+  "delta": 14400,
+  "tdelta": 14400,
+  "train": true,
+  "load": "4.0hr"
+}
+            TPR       FPR
+mean  85.714286  1.360862
+std    6.980666  0.511603
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "node2vec": false,
+  "delta": 10800,
+  "tdelta": 10800,
+  "train": true,
+  "load": "3.0hr"
+}
+            TPR       FPR
+mean  92.040816  1.958914
+std    2.174212  0.362153
+
+{
+  "single": false,
+  "save": false,
+  "grus": 1,
+  "hidden": 32,
+  "embed": 16,
+  "predictive": false,
+  "node2vec": false,
   "delta": 7200,
   "tdelta": 7200,
   "train": true,
   "load": "2.0hr"
 }
             TPR       FPR
-mean  90.294118  2.063779
-std    2.270948  0.261773
+mean  88.431373  0.922511
+std    3.090957  0.155969
 
 {
   "single": false,
@@ -22,14 +91,15 @@ std    2.270948  0.261773
   "hidden": 32,
   "embed": 16,
   "predictive": false,
+  "node2vec": false,
   "delta": 3600,
   "tdelta": 3600,
   "train": true,
   "load": "1.0hr"
 }
             TPR       FPR
-mean  84.571429  1.738756
-std    3.679802  0.182319
+mean  88.952381  0.917902
+std    2.401813  0.312576
 
 {
   "single": false,
@@ -38,31 +108,15 @@ std    3.679802  0.182319
   "hidden": 32,
   "embed": 16,
   "predictive": false,
+  "node2vec": false,
   "delta": 1800,
   "tdelta": 1800,
   "train": true,
   "load": "0.5hr"
 }
             TPR       FPR
-mean  89.181818  1.673689
-std    1.795055  0.170868
-
-{
-  "single": false,
-  "save": false,
-  "grus": 1,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": false,
-  "delta": 900,
-  "tdelta": 900,
-  "train": true,
-  "load": "0.25hr"
-}
-            TPR       FPR
-mean  87.699115  2.061563
-std    2.221025  0.183308
-
+mean  86.727273  0.421720
+std    1.831767  0.157087
 
 ##### Predictive #####
 {
@@ -72,14 +126,15 @@ std    2.221025  0.183308
   "hidden": 32,
   "embed": 16,
   "predictive": true,
+  "node2vec": false,
   "delta": 7200,
   "tdelta": 7200,
   "train": true,
   "load": "2.0hr"
 }
             TPR       FPR
-mean  58.913043  1.804746
-std    7.953373  0.541741
+mean  71.086957  0.593024
+std   12.126265  0.162250
 
 {
   "single": false,
@@ -88,14 +143,15 @@ std    7.953373  0.541741
   "hidden": 32,
   "embed": 16,
   "predictive": true,
+  "node2vec": false,
   "delta": 3600,
   "tdelta": 3600,
   "train": true,
   "load": "1.0hr"
 }
             TPR       FPR
-mean  75.600000  1.475001
-std    4.331282  0.072787
+mean  72.800000  0.366813
+std    1.529706  0.005750
 
 {
   "single": false,
@@ -104,156 +160,13 @@ std    4.331282  0.072787
   "hidden": 32,
   "embed": 16,
   "predictive": true,
+  "node2vec": false,
   "delta": 1800,
   "tdelta": 1800,
   "train": true,
   "load": "0.5hr"
 }
             TPR       FPR
-mean  84.339623  2.321780
-std    7.902035  0.279999
-
-{
-  "single": false,
-  "save": false,
-  "grus": 1,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": true,
-  "delta": 900,
-  "tdelta": 900,
-  "train": true,
-  "load": "0.25hr"
-}
-            TPR       FPR
-mean  86.545455  2.788493
-std    3.741657  0.397350
-
-##### 2 GRU #####
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": false,
-  "delta": 3600,
-  "tdelta": 3600,
-  "train": true,
-  "load": "1.0hr"
-}
-            TPR       FPR
-mean  82.476190  1.324796
-std    3.321066  0.146100{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": false,
-  "delta": 900,
-  "tdelta": 900,
-  "train": true,
-  "load": "0.25hr"
-}
-            TPR       FPR
-mean  67.433628  2.404314
-std   11.434094  0.263640
-
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": false,
-  "delta": 1800,
-  "tdelta": 1800,
-  "train": true,
-  "load": "0.5hr"
-}
-            TPR       FPR
-mean  90.363636  2.430678
-std    2.897705  0.229477
-
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": false,
-  "delta": 7200,
-  "tdelta": 7200,
-  "train": true,
-  "load": "2.0hr"
-}
-            TPR       FPR
-mean  53.529412  2.602693
-std   10.675026  0.462412
-
-##### 2 GRU Pred #####
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": true,
-  "delta": 900,
-  "tdelta": 900,
-  "train": true,
-  "load": "0.25hr"
-}
-            TPR       FPR
-mean  95.272727  2.645644
-std    1.585054  0.162502
-
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": true,
-  "delta": 1800,
-  "tdelta": 1800,
-  "train": true,
-  "load": "0.5hr"
-}
-            TPR       FPR
-mean  93.584906  2.228156
-std    2.674990  0.219594
-
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": true,
-  "delta": 3600,
-  "tdelta": 3600,
-  "train": true,
-  "load": "1.0hr"
-}
-            TPR       FPR
-mean  64.600000  1.545484
-std   14.654692  0.166683
-
-{
-  "single": false,
-  "save": false,
-  "grus": 2,
-  "hidden": 32,
-  "embed": 16,
-  "predictive": true,
-  "delta": 7200,
-  "tdelta": 7200,
-  "train": true,
-  "load": "2.0hr"
-}
-            TPR       FPR
-mean  71.304348  2.041080
-std    9.072018  0.283832
+mean  73.207547  0.717262
+std   12.999028  0.195619
 

@@ -12,6 +12,7 @@ from torch.optim import Adam
 import generators as g
 import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
+from models.node2vec import embed
 from utils import get_score, tpr_fpr, get_optimal_cutoff
 
 torch.set_num_threads(8)
@@ -79,6 +80,11 @@ def get_args():
         action='store_true'
     )
 
+    p.add_argument(
+        '-n', '--node2vec',
+        action='store_true'
+    )
+
     cleaned = {}
     args = p.parse_args()
     #args = p.parse_args('-l 2hr -d 2'.split(' '))
@@ -89,6 +95,7 @@ def get_args():
     cleaned['hidden'] = args.hidden
     cleaned['embed'] = args.embed
     cleaned['predictive'] = args.predictive
+    cleaned['node2vec'] = args.node2vec
     
     # Get delta and test delta
     cleaned['delta'] = args.delta 
@@ -338,9 +345,20 @@ def run_once(args):
             start=TR_START, end=VAL_START,
             delta=args['delta']
         )
+
+        if args['node2vec']:
+            x = embed(200, data, 64, 10, 5)
+
+        else:
+            x = torch.eye(data.x.size(0))
+    
+        x = torch.cat(
+                [data.x, x], dim=1
+            )
+        data.x = x 
         model = SerialTGCN(
             data.x.size(1), 32, 16,
-            variational=False, gru_hidden_units=args['grus'], use_w=True, 
+            gru_hidden_units=args['grus'], use_w=True, 
             use_predictor=False, #neg_weight=0.75
         )
         model, h0 = train(data, model, pred, epochs=EPOCHS)
@@ -350,11 +368,12 @@ def run_once(args):
             2, start=VAL_START, end=VAL_END,
             delta=args['delta']
         )
+        data.x = x
         cutoff, h0 = get_cutoff(data, model, pred, h0)
         
         if args['save']:
             pickle.dump(
-                {'model': model, 'h0': h0},
+                {'model': model, 'h0': h0, 'x': data.x},
                 open(fname, 'wb+')
             )
 
@@ -362,7 +381,8 @@ def run_once(args):
     else:
         sv = pickle.load(open(fname, 'rb'))
         model = sv['model']
-        h0 = sv['h0']
+        h0 = sv['h0']    
+        x = sv['x']
         
         # Get a bit more data for validation of optimal cutoff
         data = ld.load_lanl_dist(
@@ -370,6 +390,7 @@ def run_once(args):
             start=VAL_START, end=VAL_END,
             delta=args['delta']
         )
+        data.x = x
         cutoff, h0 = get_cutoff(data, model, pred, h0)
     
     data = ld.load_lanl_dist(
@@ -377,7 +398,8 @@ def run_once(args):
         start=TE_START, end=TE_END, 
         is_test=True, delta=args['tdelta']
     )
-    
+    data.x = x 
+
     return test(
         data, model, h0, pred, fname=args['load'], single_prior=args['single']
     )
