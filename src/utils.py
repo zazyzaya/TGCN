@@ -1,7 +1,8 @@
 import torch 
 import numpy as np
 
-from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve
+from sklearn.metrics import roc_auc_score, average_precision_score, \
+    roc_curve, precision_recall_curve, auc, f1_score
 
 '''
 Returns AUC and AP scores given true and false scores
@@ -18,6 +19,24 @@ def get_score(pscore, nscore):
     auc = roc_auc_score(labels, score)
 
     return [auc, ap]
+
+def get_auprc(probs, y):
+    p, r, _ = precision_recall_curve(y, probs)
+    pr_curve = auc(r,p)
+    return pr_curve
+
+def get_f1(y_hat, y):
+    return f1_score(y, y_hat)
+
+def tf_auprc(t, f):
+    nt = t.size(0)
+    nf = f.size(0)
+    
+    y_hat = torch.cat([t,f], dim=0)
+    y = torch.zeros((nt+nf,1))
+    y[:nt] = 1
+
+    return get_auprc(y_hat, y)
 
 '''
 Calculates true positive rate and false positive rate given 

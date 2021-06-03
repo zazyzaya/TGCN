@@ -13,9 +13,9 @@ import generators as g
 import loaders.load_lanl_dist as ld
 from models.serial_model import SerialTGCN
 from models.node2vec import embed
-from utils import get_score, tpr_fpr, get_optimal_cutoff
+from utils import get_score, get_optimal_cutoff
 
-torch.set_num_threads(8)
+torch.set_num_threads(16)
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
 HOME = '/mnt/raid0_24TB/isaiah/code/TGCN/src/'
@@ -31,8 +31,8 @@ TR_END=ld.DATE_OF_EVIL_LANL-1
 TE_START=TR_END
 #TE_END = 228642 # First 20 anoms
 #TE_END = 740104 # First 100 anoms
-TE_END = 1089597 # First 500 anoms
-#TE_END = 5011200 # Full
+#TE_END = 1089597 # First 500 anoms
+TE_END = 5011199 # Full
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -290,10 +290,10 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
     
     tpr = y_hat[y==1].mean() * 100
     fpr = y_hat[y==0].mean() * 100
-    d_tpr = default[y==1].mean() * 100
-    d_fpr = default[y==0].mean() * 100 
+    
+    tp = y_hat[y==1].sum()
+    fp = y_hat[y==0].sum()
 
-    print("Def. TPR: %0.2f, FPR: %0.2f" % (d_tpr, d_fpr))
     print("Opt. TPR: %0.2f, FPR: %0.2f" % (tpr, fpr))
 
     '''
@@ -319,7 +319,7 @@ def test(data, model, h0, pred, single_prior=False, fname='out'):
     )
     '''
 
-    return (tpr, fpr)
+    return (tpr, fpr, tp, fp)
 
 '''
 Spins up a model and runs it once given user's input args
@@ -394,7 +394,7 @@ def run_once(args):
         cutoff, h0 = get_cutoff(data, model, pred, h0)
     
     data = ld.load_lanl_dist(
-        min(8, (TE_END-TE_START)//args['tdelta']), 
+        min(16, (TE_END-TE_START)//args['tdelta']), 
         start=TE_START, end=TE_END, 
         is_test=True, delta=args['tdelta']
     )
@@ -411,7 +411,7 @@ if __name__ == '__main__':
 
     if args['train']:
         stats = [run_once(args) for _ in range(5)]
-        stats = pd.DataFrame(stats, columns=['TPR', 'FPR'])
+        stats = pd.DataFrame(stats, columns=['TPR', 'FPR', 'TP', 'FP'])
         stats = pd.DataFrame([stats.mean(), stats.sem()], index=['mean', 'std'])
 
         with open('lanl_stats.txt', 'a') as f:

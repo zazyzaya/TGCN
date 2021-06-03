@@ -1,20 +1,19 @@
+from argparse import ArgumentParser
 from copy import deepcopy
-import argparse
+from types import SimpleNamespace as SN
 
 import pandas as pd
 import torch 
 from torch.optim import Adam
+from torch_geometric.utils import to_dense_adj
+from torch_geometric.utils.loop import add_remaining_self_loops
 
 import generators as g
 import loaders.load_vgrnn as vd
-from models.serial_model import SerialTGCN
-from models.vgrnn_like import GAE_RNN, VGRNN
-from models.tgcn_with_prior import PriorSerialTGCN
+from models.evo_gcn import LP_EGCN_h, LP_EGCN_o
 from utils import get_score, tf_auprc
 
 torch.set_num_threads(8)
-
-uses_priors = [VGRNN, PriorSerialTGCN]
 
 NUM_TESTS = 5
 
@@ -28,11 +27,29 @@ TEST_TS = 3
 
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
+def convert_to_dense(data, mask, start=0, end=None):
+    end = data.T if not end else end
+
+    adjs = []
+    for t in range(start, end):
+        ei = data.get_masked_edges(t, mask)
+        ei = add_remaining_self_loops(ei, num_nodes=data.num_nodes)[0]
+        
+        a = to_dense_adj(ei, max_num_nodes=data.num_nodes)[0]
+        d = a.sum(dim=1)
+        d = 1/torch.sqrt(d) 
+        d = torch.diag(d)
+        ahat = d @ a @ d
+
+        adjs.append(ahat)
+
+    return adjs, [torch.eye(data.num_nodes) for _ in range(len(adjs))]
+
 def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
-    decreases = 0
     print(lr)
     end_tr = data.T-TEST_TS
 
+    tr_adjs, tr_xs = convert_to_dense(data, data.TR, end=end_tr)
     opt = Adam(model.parameters(), lr=lr)
 
     best = (0, None)
@@ -40,18 +57,16 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
     for e in range(epochs):
         model.train()
         opt.zero_grad()
-        zs = None
 
-        # Get embedding        
-        zs = model(data.x, data.eis, data.tr)[:end_tr]
+        # Get embedding   
+        zs = model(tr_adjs, tr_xs)
 
-        if not dynamic or model.__class__ in uses_priors:
+        if not dynamic:
             p,n,z = g.link_prediction(data, data.tr, zs, include_tr=False, nratio=nratio)
             
         else:
             p,n,z = g.dynamic_link_prediction(data, data.tr, zs, include_tr=False, nratio=nratio)      
         
-
         loss = model.loss_fn(p,n,z)
         loss.backward()
         opt.step()
@@ -62,7 +77,7 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
         trloss = loss.item() 
         with torch.no_grad():
             model.eval()
-            zs = model(data.x, data.eis, data.tr)[:end_tr]
+            zs = model(tr_adjs, tr_xs)
 
             if not dynamic:
                 p,n,z = g.link_prediction(data, data.va, zs)
@@ -77,22 +92,11 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
                 avg = sscores[0] + sscores[1]
 
             else:
-                # VGRNN is providing priors, which are built from the previous timestep
-                # already, thus there is no need to shift the selected ei's as the 
-                # dynamic functions do 
-                if model.__class__ in uses_priors:
-                    zs = zs[1:]
-                    dp,dn,dz = g.link_prediction(data, data.va, zs)
-                else:
-                    dp,dn,dz = g.dynamic_link_prediction(data, data.va, zs)
-                
+                dp,dn,dz = g.dynamic_link_prediction(data, data.va, zs)
                 dt, df = model.score_fn(dp,dn,dz)
                 dscores = get_score(dt, df)
 
                 dp,dn,dz = g.dynamic_new_link_prediction(data, data.va, zs)
-                if model.__class__ in uses_priors:
-                    dz = zs # Again, we don't need to shift the VGRNN embeds backward
-                
                 dt, df = model.score_fn(dp,dn,dz)
                 dnscores = get_score(dt, df)
 
@@ -124,7 +128,8 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs = model(data.x, data.eis, data.tr)[end_tr:]
+        adjs, xs = convert_to_dense(data, data.TR)
+        zs = model(adjs, xs)[end_tr:]
 
         if not dynamic:
             p,n,z = g.link_prediction(data, data.te, zs, start=end_tr)
@@ -140,21 +145,12 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
 
             return {'auc': sscores[0], 'ap': sscores[1]}
 
-        else:
-            if model.__class__ in uses_priors:
-                zs = zs[1:]
-                p,n,z = g.link_prediction(data, data.te, zs, start=end_tr)
-            else:                
-                p,n,z = g.dynamic_link_prediction(data, data.te, zs, start=end_tr)
-        
+        else:    
+            p,n,z = g.dynamic_link_prediction(data, data.te, zs, start=end_tr)
             t, f = model.score_fn(p,n,z)
             dscores = get_score(t, f)
-            dauprc = tf_auprc(t,f)
 
             p,n,z = g.dynamic_new_link_prediction(data, data.te, zs, start=end_tr)
-            if model.__class__ in uses_priors:
-                z = zs 
-            
             t, f = model.score_fn(p,n,z)
             nscores = get_score(t, f)
 
@@ -171,85 +167,38 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
             return {
                 'pred-auc': dscores[0],
                 'pred-ap': dscores[1],
-                'pred-auprc': dauprc,
                 'new-auc': nscores[0], 
                 'new-ap': nscores[1],
             }
 
 
 if __name__ == '__main__':
-    #data = vd.load_vgrnn('dblp')
-    #print(data.x.size(0))
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-m', '--model',
-        default='tgcn',
-        help="Determines which model used from ['(T)GCN', '(R)GAE', '(V)GRNN', (P)TGCN]"
-    )
-    parser.add_argument(
-        '-n', '--not-variational',
-        action='store_false',
-        help="Sets model to non-variational if flag used"
-    )
-    parser.add_argument(
-        '-g', '--grnn',
-        action='store_true',
-        help='Uses Graph RNN if flag used'
-    )
-    parser.add_argument(
+    ap = ArgumentParser()
+    ap.add_argument(
         '-s', '--static',
-        action='store_false',
-        help='Sets model to train on static link prediction'
+        action='store_false'
     )
-    parser.add_argument(
-        '-l', '--sparse-loss',
-        action='store_false',
-        help='Uses the sparse loss function for VGRNN'
-    )
-    parser.add_argument(
-        '--lstm',
+    ap.add_argument(
+        '-i', '--innerproduct',
         action='store_true'
     )
-    parser.add_argument(
+    ap.add_argument(
         '--lr',
         type=float,
         default=0.01
     )
+    ap.add_argument(
+        '-o',
+        action='store_true'
+    )
+    args = ap.parse_args()
 
-    args = parser.parse_args()
-    mtype = args.model.lower()
-    outf = mtype + '.txt' 
+    m_constructor = LP_EGCN_o if args.o else LP_EGCN_h
+    outf = 'egcn_o.txt' if args.o else 'egcn_h.txt'
 
     for d in ['enron10', 'fb', 'dblp']:
         data = vd.load_vgrnn(d)
-        
-        if mtype == 'tgcn' or mtype == 't':   
-            model = SerialTGCN(
-                data.x.size(1), 32, 16, 
-                #variational=args.not_variational
-                #dense_loss=args.sparse_loss
-            )
-        elif mtype == 'rgae' or mtype == 'r':
-            model = GAE_RNN(
-                data.x.size(1), 32, 16,
-                grnn=args.grnn, variational=args.not_variational
-            )
-
-        elif mtype == 'vgrnn' or mtype == 'v':
-            model = VGRNN(
-                data.x.size(1), 32, 16, pred=args.static,
-                adj_loss=args.sparse_loss
-            )
-
-        elif mtype == 'ptgcn' or mtype == 'p':
-            model = PriorSerialTGCN(
-                data.x.size(1), 32, 16, pred=args.static
-            )
-
-        else: 
-            raise Exception("Model must be one of ['TGCN', 'PTGCN', 'RGAE', 'VGRNN']")
-
+        model = m_constructor(data.num_nodes, 32, 16, inner_prod=args.innerproduct)
         stats = [train(deepcopy(model), data, dynamic=args.static, lr=args.lr) for _ in range(NUM_TESTS)]
 
         df = pd.DataFrame(stats)
@@ -258,7 +207,7 @@ if __name__ == '__main__':
 
         f = open(outf, 'a')
         f.write(d + '\n')
-        f.write('LR: %0.4f\n' % args.lr)
+        f.write('===== LR %0.4f; Using inner prod? %s =====\n' % (args.lr, args.innerproduct))
         f.write(str(df.mean()*100) + '\n')
         f.write(str(df.sem()*100) + '\n\n')
         f.close()

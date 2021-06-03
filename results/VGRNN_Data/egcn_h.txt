@@ -1,0 +1,335 @@
+BEST 
+
+enron10
+===== LR 0.0100; Using inner prod? True =====
+auc         93.319591
+ap          93.486104
+===== LR 0.0050; Using inner prod? True =====
+pred-auc    86.049596
+pred-ap     86.621995
+new-auc     84.203559
+new-ap      83.859659
+--------------------
+auc         0.596622
+ap          0.583112
+pred-auc    0.872626
+pred-ap     1.366315
+new-auc     0.831353
+new-ap      1.569179
+
+fb
+===== LR 0.0050; Using inner prod? True =====
+auc         87.150112
+ap          85.355765
+===== LR 0.0100; Using inner prod? True =====
+pred-auc    75.072246
+pred-ap     73.272259
+new-auc     73.812475
+new-ap      72.728624
+--------------------
+auc         0.379643
+ap          0.453172
+pred-auc    0.319230
+pred-ap     0.795684
+new-auc     0.669974
+new-ap      1.189204
+
+
+dblp
+===== LR 0.0050; Using inner prod? True =====
+auc         88.226990
+ap          88.537975
+===== LR 0.0100; Using inner prod? True =====
+pred-auc    79.679528
+pred-ap     82.648398
+new-auc     78.448773
+new-ap      82.590895
+--------------------
+auc         0.933261
+ap          1.103065
+pred-auc    1.303835
+pred-ap     1.297455
+new-auc     1.442332
+new-ap      1.682261
+
+
+
+enron10
+===== LR 0.0010; Using inner prod? True =====
+pred-auc    85.588235
+pred-ap     86.744341
+new-auc     84.156233
+new-ap      84.954742
+dtype: float64
+pred-auc    1.353852
+pred-ap     1.499407
+new-auc     0.942884
+new-ap      0.722788
+dtype: float64
+
+fb
+===== LR 0.0010; Using inner prod? True =====
+pred-auc    73.147808
+pred-ap     68.667163
+new-auc     73.065414
+new-ap      68.824358
+dtype: float64
+pred-auc    0.912516
+pred-ap     0.464700
+new-auc     2.108268
+new-ap      2.169722
+dtype: float64
+
+dblp
+===== LR 0.0010; Using inner prod? True =====
+pred-auc    74.963329
+pred-ap     76.347118
+new-auc     72.934240
+new-ap      73.892128
+dtype: float64
+pred-auc    0.634722
+pred-ap     0.751247
+new-auc     2.484105
+new-ap      2.750411
+dtype: float64
+
+enron10
+===== LR 0.0010; Using inner prod? True =====
+auc    82.783211
+ap     83.062841
+dtype: float64
+auc    0.863266
+ap     1.321878
+dtype: float64
+
+fb
+===== LR 0.0010; Using inner prod? True =====
+auc    81.201816
+ap     77.624252
+dtype: float64
+auc    0.496939
+ap     1.128505
+dtype: float64
+
+dblp
+===== LR 0.0010; Using inner prod? True =====
+auc    83.750865
+ap     82.589470
+dtype: float64
+auc    0.782964
+ap     0.734568
+dtype: float64
+
+
+enron10
+===== LR 0.0050; Using inner prod? True =====
+pred-auc    86.049596
+pred-ap     86.621995
+new-auc     84.203559
+new-ap      83.859659
+dtype: float64
+pred-auc    0.872626
+pred-ap     1.366315
+new-auc     0.831353
+new-ap      1.569179
+dtype: float64
+
+fb
+===== LR 0.0050; Using inner prod? True =====
+pred-auc    73.022679
+pred-ap     71.868143
+new-auc     72.621554
+new-ap      71.155889
+dtype: float64
+pred-auc    0.378028
+pred-ap     0.517128
+new-auc     0.707513
+new-ap      1.102501
+dtype: float64
+
+dblp
+===== LR 0.0050; Using inner prod? True =====
+pred-auc    77.884247
+pred-ap     81.324475
+new-auc     77.061224
+new-ap      79.643572
+dtype: float64
+pred-auc    0.746905
+pred-ap     0.618273
+new-auc     1.396805
+new-ap      0.890699
+dtype: float64
+
+enron10
+===== LR 0.0050; Using inner prod? True =====
+auc    91.377571
+ap     92.067209
+dtype: float64
+auc    0.299047
+ap     0.607108
+dtype: float64
+
+fb
+===== LR 0.0050; Using inner prod? True =====
+auc    87.150112
+ap     85.355765
+dtype: float64
+auc    0.379643
+ap     0.453172
+dtype: float64
+
+dblp
+===== LR 0.0050; Using inner prod? True =====
+auc    88.226990
+ap     88.537975
+dtype: float64
+auc    0.933261
+ap     1.103065
+dtype: float64
+
+
+enron10
+===== LR 0.0100; Using inner prod? True =====
+pred-auc    81.184160
+pred-ap     82.920561
+new-auc     81.356148
+new-ap      83.330679
+dtype: float64
+pred-auc    1.333995
+pred-ap     2.046424
+new-auc     0.580877
+new-ap      1.424448
+dtype: float64
+
+fb
+===== LR 0.0100; Using inner prod? True =====
+pred-auc    75.072246
+pred-ap     73.272259
+new-auc     73.812475
+new-ap      72.728624
+dtype: float64
+pred-auc    0.319230
+pred-ap     0.795684
+new-auc     0.669974
+new-ap      1.189204
+dtype: float64
+
+dblp
+===== LR 0.0100; Using inner prod? True =====
+pred-auc    79.679528
+pred-ap     82.648398
+new-auc     78.448773
+new-ap      82.590895
+dtype: float64
+pred-auc    1.303835
+pred-ap     1.297455
+new-auc     1.442332
+new-ap      1.682261
+dtype: float64
+
+enron10
+===== LR 0.0100; Using inner prod? True =====
+auc    93.319591
+ap     93.486104
+dtype: float64
+auc    0.596622
+ap     0.583112
+dtype: float64
+
+fb
+===== LR 0.0100; Using inner prod? True =====
+auc    84.795054
+ap     82.977157
+dtype: float64
+auc    1.158023
+ap     1.256203
+dtype: float64
+
+dblp
+===== LR 0.0100; Using inner prod? True =====
+auc    87.682353
+ap     87.163981
+dtype: float64
+auc    0.693140
+ap     0.575237
+dtype: float64
+
+
+enron10
+===== LR 0.0050; Using inner prod? False =====
+pred-auc    79.213764
+pred-ap     73.416960
+new-auc     79.264534
+new-ap      73.576176
+dtype: float64
+pred-auc    0.428832
+pred-ap     0.761552
+new-auc     1.963368
+new-ap      2.250550
+dtype: float64
+
+fb
+===== LR 0.0050; Using inner prod? False =====
+pred-auc    57.850805
+pred-ap     57.447899
+new-auc     57.659676
+new-ap      56.397526
+dtype: float64
+pred-auc    0.824961
+pred-ap     0.644278
+new-auc     1.053365
+new-ap      0.974191
+dtype: float64
+
+dblp
+===== LR 0.0050; Using inner prod? False =====
+pred-auc    67.783801
+pred-ap     66.616173
+new-auc     65.214429
+new-ap      62.601414
+dtype: float64
+pred-auc    2.266280
+pred-ap     1.274639
+new-auc     2.515617
+new-ap      2.133652
+dtype: float64
+
+
+enron10
+===== LR 0.0100; Using inner prod? False =====
+pred-auc    82.306805
+pred-ap     79.129199
+new-auc     82.058726
+new-ap      79.143369
+dtype: float64
+pred-auc    0.868018
+pred-ap     0.790458
+new-auc     1.311208
+new-ap      1.817251
+dtype: float64
+
+fb
+===== LR 0.0100; Using inner prod? False =====
+pred-auc    60.104858
+pred-ap     57.146604
+new-auc     60.665737
+new-ap      57.778594
+dtype: float64
+pred-auc    0.732853
+pred-ap     0.859377
+new-auc     1.434775
+new-ap      1.173503
+dtype: float64
+
+dblp
+===== LR 0.0100; Using inner prod? False =====
+pred-auc    64.091199
+pred-ap     62.829398
+new-auc     64.922145
+new-ap      63.511719
+dtype: float64
+pred-auc    1.200537
+pred-ap     1.621315
+new-auc     0.809076
+new-ap      1.142497
+dtype: float64

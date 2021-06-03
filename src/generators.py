@@ -41,7 +41,7 @@ def link_prediction(data, partition_fn, zs, start=0, end=None,
     if batched:
         raise NotImplementedError("Sorry, batching is a TODO")
 
-    end = end if end else data.T
+    end = end if end else start+len(zs)
     negs = []
     
     if partition_fn == None:
@@ -93,7 +93,7 @@ def dynamic_new_link_prediction(data, partition_fn, zs, start=0, end=None,
     if partition_fn == None:
         partition_fn = lambda x : data.eis[x]
 
-    end = end if end else data.T
+    end = end if end else start+len(zs)
 
     for i in range(start, end):
         # Use full adj matrix for new link pred

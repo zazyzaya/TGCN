@@ -28,12 +28,15 @@ class GAE(nn.Module):
 
 
 class Recurrent(nn.Module):
-    def __init__(self, feat_dim, out_dim=16, hidden_dim=32, hidden_units=1):
+    def __init__(self, feat_dim, out_dim=16, hidden_dim=32, hidden_units=1, lstm=False):
         super(Recurrent, self).__init__()
 
         self.gru = nn.GRU(
             feat_dim, hidden_dim, num_layers=hidden_units#, dropout=0.25
-        )
+        ) if not lstm else \
+            nn.LSTM(
+                feat_dim, hidden_dim, num_layers=hidden_units
+            )
 
         self.drop = nn.Dropout(0.25)
         self.lin = nn.Linear(hidden_dim, out_dim)#, bias=False)
@@ -61,7 +64,7 @@ class Recurrent(nn.Module):
 class SerialTGCN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, gru_hidden_units=1, 
                 dynamic_feats=False, dense_loss=False,
-                use_predictor=False, use_w=True,
+                use_predictor=False, use_w=True, lstm=False,
                 neg_weight=0.5):
         super(SerialTGCN, self).__init__()
 
@@ -79,7 +82,8 @@ class SerialTGCN(nn.Module):
         self.gru = Recurrent(
             h_dim, out_dim=z_dim, 
             hidden_dim=h_dim, 
-            hidden_units=gru_hidden_units
+            hidden_units=gru_hidden_units,
+            lstm=lstm
         ) if gru_hidden_units > 0 else None
 
         self.use_predictor = use_predictor
@@ -224,7 +228,7 @@ class SerialTGCN(nn.Module):
                     self.decode(f_src, f_dst, z)
                 )   
             else:
-                tot_loss = full_adj_nll(ts[i], z)
+                tot_loss += full_adj_nll(ts[i], z)
 
         return tot_loss.true_divide(T)
 

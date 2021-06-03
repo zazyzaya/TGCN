@@ -1,24 +1,39 @@
+from argparse import ArgumentError
 import os 
 import pickle
 
 import torch
-from torch_geometric.utils import dense_to_sparse, to_undirected
+from torch_geometric.utils import dense_to_sparse, to_undirected, to_dense_adj
 from torch_geometric.data import Data
 
 from .load_utils import edge_tvt_split
 
 class TData(Data):
+    TR = 0
+    VA = 1
+    TE = 2
+    ALL = 3
+
     def __init__(self, **kwargs):
         super(TData, self).__init__(**kwargs)
 
         # Getter methods so I don't have to write this every time
+        self.tr = lambda t : self.eis[t][:, self.masks[t][0]]
         self.va = lambda t : self.eis[t][:, self.masks[t][1]]
         self.te = lambda t : self.eis[t][:, self.masks[t][2]]
-
-        # Only the last 3 time stamps are masked
-        self.tr = lambda t : to_undirected(self.eis[t][:, self.masks[t][0]])
         self.all = lambda t : self.eis[t]
 
+    def get_masked_edges(self, t, mask):
+        if mask == self.TR:
+            return self.tr(t)
+        elif mask == self.VA:
+            return self.va(t)
+        elif mask == self.TE:
+            return self.te(t)
+        elif mask == self.ALL:
+            return self.all(t)
+        else:
+            raise ArgumentError("Mask must be TData.TR, TData.VA, TData.TE, or TData.ALL")
 
 '''
 For loading datasets from the VRGNN repo (none have features)
