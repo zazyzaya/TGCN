@@ -42,6 +42,11 @@ fmt_line = lambda x : (
 )
 
 while line:
+    # Some filtering for better FPR/less Kerb noise
+    if 'NTLM' not in line.upper():
+        line = f_in.readline()
+        continue
+
     l, ts = fmt_line(line.split(','))
 
     if ts != last_time:

@@ -17,7 +17,7 @@ class VGAE(nn.Module):
 
         self.mean = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
         self.std = GCNConv(hidden_dim, embed_dim, add_self_loops=True)
-
+        
         self.soft = nn.Softplus()
 
     def forward(self, x, ei, ew=None):

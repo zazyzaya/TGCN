@@ -1,267 +1,106 @@
 BEST
-enron10
-===== LR 0.0100; Using inner prod? True =====
-auc         93.007324
-ap          92.461600
-===== LR 0.0050; Using inner prod? True =====
-pred-auc    86.853133
-pred-ap     88.200024
-new-auc     85.033952
-new-ap      83.821581
----------------------
-auc         0.748421
-ap          1.036713
-pred-auc    1.352120
-pred-ap     1.443933
-new-auc     1.226523
-new-ap      1.686340
-
-fb
-===== LR 0.0050; Using inner prod? True =====
-auc         87.710931
-ap          85.951849
-===== LR 0.0010; Using inner prod? True =====
-pred-auc    77.856596
-pred-ap     77.317412
-new-auc     76.462852
-new-ap      74.647597
----------------------
-auc         0.800648
-ap          0.812959
-pred-auc    0.718491
-pred-ap     1.054740
-new-auc     0.695072
-new-ap      0.856404
-
-dblp
-===== LR 0.0100; Using inner prod? True =====
-auc         91.316955
-ap          91.840393
-===== LR 0.0050; Using inner prod? True =====
-pred-auc    78.842474
-pred-ap     80.723374
-new-auc     76.717355
-new-ap      78.159430
---------------------
-auc         0.427561
-ap          0.396558
-pred-auc    1.248654
-pred-ap     0.948990
-new-auc     0.827608
-new-ap      0.515727
-
-
+LR 0.01 across the board
 
 enron10
 ===== LR 0.0100; Using inner prod? True =====
-pred-auc    85.841984
-pred-ap     86.904991
-new-auc     85.387339
-new-ap      86.880313
+auc         93.065216
+ap          92.559242
+pred-auc    84.282007
+pred-ap     86.551003
+new-auc     84.414922
+new-ap      86.919232
 dtype: float64
-pred-auc    0.960222
-pred-ap     1.057299
-new-auc     1.384208
-new-ap      1.590241
+auc         0.770656
+ap          0.986414
+pred-auc    0.869430
+pred-ap     1.573223
+new-auc     0.816061
+new-ap      0.388169
 dtype: float64
+
 
 fb
 ===== LR 0.0100; Using inner prod? True =====
-pred-auc    77.832478
-pred-ap     76.182703
-new-auc     77.466218
-new-ap      75.938076
+auc         86.913856
+ap          84.876835
+pred-auc    77.306201
+pred-ap     76.128862
+new-auc     75.944796
+new-ap      73.662937
 dtype: float64
-pred-auc    1.354621
-pred-ap     1.263252
-new-auc     0.819005
-new-ap      0.781311
+auc         0.516777
+ap          0.518389
+pred-auc    0.574719
+pred-ap     0.517376
+new-auc     1.152270
+new-ap      1.244755
 dtype: float64
 
 dblp
 ===== LR 0.0100; Using inner prod? True =====
-pred-auc    77.058355
-pred-ap     80.449105
-new-auc     77.414266
-new-ap      81.232892
+auc         90.768858
+ap          91.416037
+pred-auc    78.633610
+pred-ap     81.432712
+new-auc     79.059274
+new-ap      81.362987
 dtype: float64
-pred-auc    1.313880
-pred-ap     0.876871
-new-auc     0.929082
-new-ap      0.677925
-dtype: float64
-
-enron10
-===== LR 0.0100; Using inner prod? True =====
-auc    93.007324
-ap     92.461600
-dtype: float64
-auc    0.748421
-ap     1.036713
-dtype: float64
-
-fb
-===== LR 0.0100; Using inner prod? True =====
-auc    86.738526
-ap     84.236003
-dtype: float64
-auc    0.387114
-ap     0.355441
-dtype: float64
-
-dblp
-===== LR 0.0100; Using inner prod? True =====
-auc    91.316955
-ap     91.840393
-dtype: float64
-auc    0.427561
-ap     0.396558
+auc         0.385025
+ap          0.337212
+pred-auc    2.136779
+pred-ap     1.693683
+new-auc     1.598468
+new-ap      0.850933
 dtype: float64
 
 
 enron10
 ===== LR 0.0050; Using inner prod? True =====
-pred-auc    86.853133
-pred-ap     88.200024
-new-auc     85.033952
-new-ap      83.821581
+auc         92.178413
+ap          91.820563
+pred-auc    84.359862
+pred-ap     85.080414
+new-auc     81.602216
+new-ap      83.223783
 dtype: float64
-pred-auc    1.352120
-pred-ap     1.443933
-new-auc     1.226523
-new-ap      1.686340
-dtype: float64
-
-fb
-===== LR 0.0050; Using inner prod? True =====
-pred-auc    77.856596
-pred-ap     77.317412
-new-auc     76.462852
-new-ap      74.647597
-dtype: float64
-pred-auc    0.718491
-pred-ap     1.054740
-new-auc     0.695072
-new-ap      0.856404
-dtype: float64
-
-dblp
-===== LR 0.0050; Using inner prod? True =====
-pred-auc    78.842474
-pred-ap     80.723374
-new-auc     76.717355
-new-ap      78.159430
-dtype: float64
-pred-auc    1.248654
-pred-ap     0.948990
-new-auc     0.827608
-new-ap      0.515727
-dtype: float64
-
-enron10
-===== LR 0.0050; Using inner prod? True =====
-auc    92.97487
-ap     92.35707
-dtype: float64
-auc    0.800648
-ap     0.812959
+auc         0.221942
+ap          0.862704
+pred-auc    0.711638
+pred-ap     1.312918
+new-auc     1.173452
+new-ap      1.218238
 dtype: float64
 
 fb
 ===== LR 0.0050; Using inner prod? True =====
-auc    87.710931
-ap     85.951849
+auc         86.489650
+ap          84.028173
+pred-auc    76.723562
+pred-ap     74.890036
+new-auc     75.375948
+new-ap      73.749336
 dtype: float64
-auc    0.441062
-ap     0.580974
+auc         1.094163
+ap          1.227651
+pred-auc    0.889586
+pred-ap     0.719045
+new-auc     0.705284
+new-ap      1.118902
 dtype: float64
 
 dblp
 ===== LR 0.0050; Using inner prod? True =====
-auc    86.528028
-ap     86.582253
+auc         85.103114
+ap          85.647902
+pred-auc    78.029337
+pred-ap     80.085667
+new-auc     75.697332
+new-ap      77.512711
 dtype: float64
-auc    1.337605
-ap     1.526169
-dtype: float64
-
-
-enron10
-===== LR 0.001; Using inner prod? True =====
-pred-auc    81.964629
-pred-ap     80.823833
-new-auc     79.441554
-new-ap      77.747971
-dtype: float64
-pred-auc    1.685386
-pred-ap     2.064298
-new-auc     1.540888
-new-ap      2.150725
-dtype: float64
-
-fb
-===== LR 0.001; Using inner prod? True =====
-pred-auc    70.995501
-pred-ap     69.685190
-new-auc     71.431208
-new-ap      69.859534
-dtype: float64
-pred-auc    0.551386
-pred-ap     1.144232
-new-auc     0.690006
-new-ap      1.103535
-dtype: float64
-
-dblp
-===== LR 0.001; Using inner prod? True =====
-pred-auc    76.626276
-pred-ap     75.599731
-new-auc     76.525461
-new-ap      77.205631
-dtype: float64
-pred-auc    1.149583
-pred-ap     1.195773
-new-auc     1.337538
-new-ap      1.135008
-dtype: float64
-
-
-
-enron10
-===== LR 0.010000; Using inner prod? False =====
-pred-auc    80.111496
-pred-ap     74.998425
-new-auc     80.108152
-new-ap      74.676083
-dtype: float64
-pred-auc    1.123743
-pred-ap     1.829943
-new-auc     1.502706
-new-ap      2.096363
-dtype: float64
-
-fb
-===== LR 0.010000; Using inner prod? False =====
-pred-auc    58.977010
-pred-ap     57.330142
-new-auc     59.484611
-new-ap      57.235719
-dtype: float64
-pred-auc    2.055988
-pred-ap     2.139742
-new-auc     2.170381
-new-ap      1.965441
-dtype: float64
-
-dblp
-===== LR 0.010000; Using inner prod? False =====
-pred-auc    64.971301
-pred-ap     62.780215
-new-auc     64.723508
-new-ap      63.140661
-dtype: float64
-pred-auc    0.495858
-pred-ap     0.725494
-new-auc     2.080464
-new-ap      1.809129
+auc         0.313643
+ap          0.570049
+pred-auc    0.783176
+pred-ap     0.845307
+new-auc     1.500639
+new-ap      2.217450
 dtype: float64

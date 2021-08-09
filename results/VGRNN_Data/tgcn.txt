@@ -1,249 +1,357 @@
-BEST:
-
+BEST
 enron10
-LR: 0.0050
-auc           95.867725
-ap            96.151219
-pred-auc      93.189158
-pred-ap       94.406547
-new-auc       90.755208
-new-ap        90.409276
-------------------------
-auc           0.340827
-ap            0.345422
-pred-auc      0.406321
-pred-ap       0.438706
-new-auc       0.886887
-new-ap        1.056285
-enron10
+LR: 0.0300
+auc         96.085259
+ap          96.610576
+LR: 0.0200
+pred-auc    94.575677
+pred-ap     95.408532
+new-auc     93.043670
+new-ap      92.672628
+---------------------
+auc         0.336314
+ap          0.321590
+pred-auc    0.237430
+pred-ap     0.365121
+new-auc     0.522219
+new-ap      1.025024
 
 fb
-LR: 0.0100
-auc           92.979799
-ap            92.396798
-LR: 0.0050
-pred-auc      84.963628
-pred-ap       84.298200
-new-auc       85.729908
-new-ap        85.432344
-------------------------
-auc           0.316588
-ap            0.458257
-pred-auc      0.144248
-pred-ap       0.519320
-new-auc       0.324065
-new-ap        0.465405
+LR: 0.0250
+auc         92.195985
+ap          91.740678
+LR: 0.0200
+pred-auc    88.193943
+pred-ap     87.682707
+new-auc     87.827918
+new-ap      87.532942
+---------------------
+auc         0.562353
+ap          0.706235
+pred-auc    0.247095
+pred-ap     0.338806
+new-auc     0.226792
+new-ap      0.266610
 
 dblp
+LR: 0.0200
+auc         91.893426
+ap          92.853321
+pred-auc    85.723875
+pred-ap     88.790868
 LR: 0.0100
-auc           91.269204
-ap            92.127708
-pred-auc      88.276467
-pred-ap       90.902929
-new-auc       87.094479
-new-ap        89.424808
-------------------------
-auc           0.113440
-ap            0.318797
-pred-auc      0.837416
-pred-ap       0.531786
-new-auc       1.297720
-new-ap        1.169184
-
-
-
-
-===== LR 0.01  =====
-enron10
-LR: 0.0100
-pred-auc      92.020377
-pred-ap       92.422074
-pred-auprc    92.279226
-new-auc       90.031217
-new-ap        89.974318
-dtype: float64
-pred-auc      0.338509
-pred-ap       0.626109
-pred-auprc    0.717002
-new-auc       1.035427
-new-ap        1.606982
+new-auc     86.781168
+new-ap      89.402153
+----------------------
+auc         0.758361
+ap          0.875066
+pred-auc    0.610259
+pred-ap     0.493672
+new-auc     0.527547
+new-ap      0.606825
 dtype: float64
 
-fb
-LR: 0.0100
-pred-auc      84.939553
-pred-ap       84.805816
-pred-auprc    84.778643
-new-auc       84.533516
-new-ap        84.641036
-dtype: float64
-pred-auc      0.336244
-pred-ap       0.435384
-pred-auprc    0.435655
-new-auc       0.551409
-new-ap        0.938511
-dtype: float64
-
-dblp
-LR: 0.0100
-pred-auc      88.276467
-pred-ap       90.902929
-pred-auprc    90.862303
-new-auc       87.094479
-new-ap        89.424808
-dtype: float64
-pred-auc      0.837416
-pred-ap       0.531786
-pred-auprc    0.533589
-new-auc       1.297720
-new-ap        1.169184
-dtype: float64
 
 enron10
-LR: 0.0100
-auc    91.423183
-ap     92.121938
+LR: 0.0300
+auc         96.085259
+ap          96.610576
+pred-auc    88.179466
+pred-ap     91.129606
+new-auc     88.577041
+new-ap      91.061398
 dtype: float64
-auc    0.497076
-ap     0.745904
+auc         0.336314
+ap          0.321590
+pred-auc    0.626000
+pred-ap     0.648771
+new-auc     0.663303
+new-ap      0.794624
 dtype: float64
 
 fb
-LR: 0.0100
-auc    92.979799
-ap     92.396798
+LR: 0.0300
+auc         91.393420
+ap          91.302884
+pred-auc    87.537990
+pred-ap     87.262614
+new-auc     87.564359
+new-ap      87.439411
 dtype: float64
-auc    0.316588
-ap     0.458257
+auc         0.262008
+ap          0.401736
+pred-auc    0.203834
+pred-ap     0.486736
+new-auc     0.153467
+new-ap      0.237315
+dtype: float64
+
+dblp
+LR: 0.0300
+auc         89.26782
+ap          90.91297
+pred-auc    84.435294
+pred-ap     87.735568
+new-auc     83.939991
+new-ap      87.314394
+dtype: float64
+auc         0.468088
+ap          0.194138
+pred-auc    0.690637
+pred-ap     0.558799
+new-auc     0.586739
+new-ap      0.425713
+dtype: float64
+
+
+enron10
+LR: 0.0250
+auc         93.370466
+ap          94.458201
+pred-auc    92.333670
+pred-ap     94.421007
+new-auc     90.801506
+new-ap      92.970283
+dtype: float64
+auc         0.440487
+ap          0.465767
+pred-auc    0.908264
+pred-ap     0.782182
+new-auc     0.653666
+new-ap      0.514748
+dtype: float64
+
+fb
+LR: 0.0250
+auc         92.195985
+ap          91.740678
+pred-auc    87.370219
+pred-ap     86.933452
+new-auc     87.388468
+new-ap      87.302130
+dtype: float64
+auc         0.562353
+ap          0.706235
+pred-auc    0.448838
+pred-ap     0.325981
+new-auc     0.374653
+new-ap      0.373677
+dtype: float64
+
+dblp
+LR: 0.0250
+auc         88.444983
+ap          90.446594
+pred-auc    83.581661
+pred-ap     86.955419
+new-auc     83.240619
+new-ap      86.077651
+dtype: float64
+auc         0.616272
+ap          0.574967
+pred-auc    0.714119
+pred-ap     0.349727
+new-auc     1.113632
+new-ap      0.717952
+dtype: float64
+
+
+enron10
+LR: 0.0200
+auc         95.437919
+ap          95.168402
+pred-auc    94.575677
+pred-ap     95.408532
+new-auc     93.043670
+new-ap      92.672628
+dtype: float64
+auc         0.661798
+ap          0.951684
+pred-auc    0.237430
+pred-ap     0.365121
+new-auc     0.522219
+new-ap      1.025024
+dtype: float64
+
+fb
+LR: 0.0200
+auc         91.912563
+ap          91.980402
+pred-auc    88.193943
+pred-ap     87.682707
+new-auc     87.827918
+new-ap      87.532942
+dtype: float64
+auc         0.323900
+ap          0.344475
+pred-auc    0.247095
+pred-ap     0.338806
+new-auc     0.226792
+new-ap      0.266610
+dtype: float64
+
+dblp
+LR: 0.0200
+auc         91.893426
+ap          92.853321
+pred-auc    85.723875
+pred-ap     88.790868
+new-auc     84.294973
+new-ap      87.659633
+dtype: float64
+auc         0.776627
+ap          0.410258
+pred-auc    0.610259
+pred-ap     0.493672
+new-auc     0.282888
+new-ap      0.608877
+dtype: float64
+
+
+enron10
+LR: 0.0100
+auc         96.003684
+ap          95.173254
+pred-auc    91.559142
+pred-ap     93.043174
+new-auc     90.992969
+new-ap      92.602720
+dtype: float64
+auc         0.309371
+ap          0.911801
+pred-auc    0.802548
+pred-ap     0.717091
+new-auc     1.270039
+new-ap      1.184282
+dtype: float64
+
+fb
+LR: 0.0100
+
+dtype: float64
+auc         0.192050
+ap          0.242256
+pred-auc    0.496505
+pred-ap     0.388104
+new-auc     0.604776
+new-ap      0.614111
 dtype: float64
 
 dblp
 LR: 0.0100
-auc    91.269204
-ap     92.127708
+auc         89.649827
+ap          91.032664
+pred-auc    83.270588
+pred-ap     85.759682
+new-auc     83.263954
+new-ap      86.246622
 dtype: float64
-auc    0.824876
-ap     0.484197
+auc         0.758361
+ap          0.875066
+pred-auc    0.558847
+pred-ap     0.520728
+new-auc     0.709425
+new-ap      1.103861
 dtype: float64
 
-===== LR 0.005 =====
+
+
 enron10
 LR: 0.0050
-pred-auc      93.189158
-pred-ap       94.406547
-pred-auprc    94.371728
-new-auc       90.755208
-new-ap        90.409276
+auc    95.540546
+ap     94.769277
+pred-auc    91.338099
+pred-ap     92.537007
+new-auc     90.951147
+new-ap      91.096308
 dtype: float64
-pred-auc      0.406321
-pred-ap       0.438706
-pred-auprc    0.445383
-new-auc       0.886887
-new-ap        1.056285
+auc    0.274654
+ap     0.676954
+pred-auc    0.385970
+pred-ap     0.395431
+new-auc     0.296032
+new-ap      0.876717
 dtype: float64
 
 fb
 LR: 0.0050
-pred-auc      84.963628
-pred-ap       84.298200
-pred-auprc    84.263547
-new-auc       85.729908
-new-ap        85.432344
+auc    91.348037
+ap     90.263143
+pred-auc    85.455374
+pred-ap     85.147378
+new-auc     84.907939
+new-ap      84.640755
 dtype: float64
-pred-auc      0.144248
-pred-ap       0.519320
-pred-auprc    0.522547
-new-auc       0.324065
-new-ap        0.465405
-dtype: float64
-
-dblp
-LR: 0.0050
-pred-auc      84.698661
-pred-ap       87.228388
-pred-auprc    87.157300
-new-auc       82.922313
-new-ap        85.675299
-dtype: float64
-pred-auc      1.043790
-pred-ap       0.558007
-pred-auprc    0.559831
-new-auc       1.745471
-new-ap        1.259815
-dtype: float64
-
-enron10
-LR: 0.0050
-auc    95.867725
-ap     96.151219
-dtype: float64
-auc    0.340827
-ap     0.345422
-dtype: float64
-
-fb
-LR: 0.0050
-auc    91.394525
-ap     90.592684
-dtype: float64
-auc    0.570644
-ap     0.818616
+auc    0.354060
+ap     0.632429
+pred-auc    0.453327
+pred-ap     0.926254
+new-auc     0.213286
+new-ap      0.226225
 dtype: float64
 
 dblp
 LR: 0.0050
-auc    88.335986
-ap     90.159939
+auc    88.157785
+ap     88.219427
+pred-auc    86.108651
+pred-ap     88.009318
+new-auc     86.781168
+new-ap      89.402153
 dtype: float64
-auc    0.547957
-ap     0.426567
+auc    1.213095
+ap     1.503580
+pred-auc    0.465063
+pred-ap     0.353885
+new-auc     0.527547
+new-ap      0.606825
 dtype: float64
 
 
-===== LR 0.001 =====
+
 enron10
 LR: 0.0010
-pred-auc      83.329489
-pred-ap       84.041540
-pred-auprc    83.922650
-new-auc       82.545152
-new-ap        83.034007
+pred-auc    85.844481
+pred-ap     84.388175
+new-auc     87.124376
+new-ap      86.339261
 dtype: float64
-pred-auc      0.473063
-pred-ap       0.664091
-pred-auprc    0.673727
-new-auc       1.291925
-new-ap        1.470000
+pred-auc    1.040659
+pred-ap     1.507510
+new-auc     0.643527
+new-ap      0.807081
 dtype: float64
 
 fb
 LR: 0.0010
-pred-auc      78.882871
-pred-ap       75.559655
-pred-auprc    75.445619
-new-auc       77.917983
-new-ap        75.238728
+auc         82.033401
+ap          79.997940
+pred-auc    79.034298
+pred-ap     76.519082
+new-auc     79.520454
+new-ap      77.455281
 dtype: float64
-pred-auc      1.032114
-pred-ap       1.604885
-pred-auprc    1.622127
-new-auc       1.612127
-new-ap        1.957713
+auc         1.411170
+ap          1.515742
+pred-auc    0.925244
+pred-ap     1.023289
+new-auc     1.019958
+new-ap      1.226114
 dtype: float64
 
 dblp
 LR: 0.0010
-pred-auc      83.547513
-pred-ap       85.530953
-pred-auprc    85.452173
-new-auc       84.629630
-new-ap        85.591772
+auc         84.729412
+ap          84.647757
+pred-auc    84.674048
+pred-ap     86.768657
+new-auc     83.400348
+new-ap      84.341101
 dtype: float64
-pred-auc      0.628346
-pred-ap       1.057757
-pred-auprc    1.068672
-new-auc       0.486644
-new-ap        1.099045
+auc         1.378010
+ap          1.621287
+pred-auc    0.502073
+pred-ap     0.487409
+new-auc     0.771857
+new-ap      1.380579
 dtype: float64
-
-

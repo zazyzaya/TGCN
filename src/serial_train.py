@@ -10,7 +10,7 @@ import loaders.load_vgrnn as vd
 from models.serial_model import SerialTGCN
 from models.vgrnn_like import GAE_RNN, VGRNN
 from models.tgcn_with_prior import PriorSerialTGCN
-from utils import get_score, tf_auprc
+from utils import get_score
 
 torch.set_num_threads(8)
 
@@ -29,7 +29,6 @@ TEST_TS = 3
 fmt_score = lambda x : 'AUC: %0.4f AP: %0.4f' % (x[0], x[1])
 
 def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
-    decreases = 0
     print(lr)
     end_tr = data.T-TEST_TS
 
@@ -124,9 +123,10 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
     model = best[1]
     with torch.no_grad():
         model.eval()
-        zs = model(data.x, data.eis, data.tr)[end_tr:]
+        zs = model(data.x, data.eis, data.tr)[end_tr-1:]
 
         if not dynamic:
+            zs = zs[1:]
             p,n,z = g.link_prediction(data, data.te, zs, start=end_tr)
             t, f = model.score_fn(p,n,z)
             sscores = get_score(t, f)
@@ -145,15 +145,16 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
                 zs = zs[1:]
                 p,n,z = g.link_prediction(data, data.te, zs, start=end_tr)
             else:                
-                p,n,z = g.dynamic_link_prediction(data, data.te, zs, start=end_tr)
+                p,n,z = g.dynamic_link_prediction(data, data.te, zs, start=end_tr-1)
         
             t, f = model.score_fn(p,n,z)
             dscores = get_score(t, f)
-            dauprc = tf_auprc(t,f)
 
-            p,n,z = g.dynamic_new_link_prediction(data, data.te, zs, start=end_tr)
+            p,n,z = g.dynamic_new_link_prediction(data, data.te, zs, start=end_tr-1)
             if model.__class__ in uses_priors:
                 z = zs 
+
+            print(z.size(0))
             
             t, f = model.score_fn(p,n,z)
             nscores = get_score(t, f)
@@ -171,7 +172,6 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
             return {
                 'pred-auc': dscores[0],
                 'pred-ap': dscores[1],
-                'pred-auprc': dauprc,
                 'new-auc': nscores[0], 
                 'new-ap': nscores[1],
             }
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-m', '--model',
         default='tgcn',
-        help="Determines which model used from ['(T)GCN', '(R)GAE', '(V)GRNN', (P)TGCN]"
+        help="Determines which model used from ['(T)GCN', '(V)GRNN', (P)TGCN, (G)CN]"
     )
     parser.add_argument(
         '-n', '--not-variational',
@@ -226,9 +226,7 @@ if __name__ == '__main__':
         
         if mtype == 'tgcn' or mtype == 't':   
             model = SerialTGCN(
-                data.x.size(1), 32, 16, 
-                #variational=args.not_variational
-                #dense_loss=args.sparse_loss
+                data.x.size(1), 32, 16, lstm=True
             )
         elif mtype == 'rgae' or mtype == 'r':
             model = GAE_RNN(
@@ -245,6 +243,12 @@ if __name__ == '__main__':
         elif mtype == 'ptgcn' or mtype == 'p':
             model = PriorSerialTGCN(
                 data.x.size(1), 32, 16, pred=args.static
+            )
+
+        elif mtype == 'gcn' or mtype == 'g':
+            model = SerialTGCN(
+                data.x.size(1), 32, 16, 
+                gru_hidden_units=0
             )
 
         else: 

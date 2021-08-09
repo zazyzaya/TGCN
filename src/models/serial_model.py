@@ -1,7 +1,7 @@
 import torch 
 
 from torch import nn 
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GINConv
 
 from .gcn_gru import GraphGRU
 from .loss_fns import full_adj_nll
@@ -23,6 +23,34 @@ class GAE(nn.Module):
         x = self.drop(x)
 
         x = self.c2(x, ei, edge_weight=ew)
+
+        return x
+
+class GIN(GAE):
+    def __init__(self, feat_dim, embed_dim, hidden_dim):
+        super().__init__(feat_dim, embed_dim=embed_dim, hidden_dim=hidden_dim)
+        mlps = [
+            nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.RReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.RReLU()
+            ) for _ in range(2) ]
+        
+        self.lin = nn.Sequential(nn.Linear(feat_dim, hidden_dim), nn.RReLU())
+        self.c1 = GINConv(mlps[0], train_eps=True)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.c2 = GINConv(mlps[1], train_eps=True)
+        self.bn2 = nn.BatchNorm1d(embed_dim)
+
+    def forward(self, x, ei, ew):
+        x = self.lin(x)
+        x = self.c1(x, ei)
+        x = self.bn1(x)
+        x = self.drop(x)
+
+        x = self.c2(x, ei)
+        x = self.bn2(x)
 
         return x
 
@@ -75,7 +103,8 @@ class SerialTGCN(nn.Module):
         self.cutoff = None
 
         self.gcn = GAE(
-            x_dim, embed_dim=h_dim, 
+            x_dim, 
+            embed_dim=h_dim if gru_hidden_units > 0 else z_dim, 
             hidden_dim=h_dim
         ) 
 
