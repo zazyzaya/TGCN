@@ -10,6 +10,7 @@ import loaders.load_vgrnn as vd
 from models.serial_model import SerialTGCN
 from models.vgrnn_like import GAE_RNN, VGRNN
 from models.tgcn_with_prior import PriorSerialTGCN
+from models.tgcn_prob_loss import ProbTGCN
 from utils import get_score
 
 torch.set_num_threads(8)
@@ -146,7 +147,9 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
                 p,n,z = g.link_prediction(data, data.te, zs, start=end_tr)
             else:                
                 p,n,z = g.dynamic_link_prediction(data, data.te, zs, start=end_tr-1)
-        
+                print(len(p))
+                print(z.size(0))
+
             t, f = model.score_fn(p,n,z)
             dscores = get_score(t, f)
 
@@ -185,7 +188,8 @@ if __name__ == '__main__':
     parser.add_argument(
         '-m', '--model',
         default='tgcn',
-        help="Determines which model used from ['(T)GCN', '(V)GRNN', (P)TGCN, (G)CN]"
+        type=str.lower,
+        help="Determines which model used from ['(T)GCN', '(V)GRNN', (P)TGCN, (G)CN, (U)GAED]"
     )
     parser.add_argument(
         '-n', '--not-variational',
@@ -218,7 +222,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    mtype = args.model.lower()
+    mtype = args.model[0].lower()
     outf = mtype + '.txt' 
 
     for d in ['enron10', 'fb', 'dblp']:
@@ -249,6 +253,11 @@ if __name__ == '__main__':
             model = SerialTGCN(
                 data.x.size(1), 32, 16, 
                 gru_hidden_units=0
+            )
+
+        elif mtype == 'ugaed' or mtype == 'u':
+            model = ProbTGCN(
+                data.x.size(1), 32, 16
             )
 
         else: 
