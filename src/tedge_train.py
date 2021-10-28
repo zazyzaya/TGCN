@@ -68,13 +68,22 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
                 avg = sscores[0] + sscores[1]
 
             elif type(model) == HybridProbTGCN:
-                p,n,_ = g.dynamic_link_prediction(data, data.va, zs)
+                dp,dn,_ = g.dynamic_link_prediction(data, data.va, zs)
                 dt, df = model.score_fn(dp,dn,hs)
                 dscores = get_score(dt, df)
 
                 dp,dn,_ = g.dynamic_new_link_prediction(data, data.va, zs)
                 dt, df = model.score_fn(dp,dn,hs)
                 dnscores = get_score(dt, df)
+
+                print(
+                    '[%d] Loss: %0.4f  \n\tDet %s  \n\tNew %s' %
+                    (e, trloss, fmt_score(dscores), fmt_score(dnscores) )
+                )
+
+                avg = (
+                    dscores[0] + dscores[1] 
+                )
 
             else:
                 dp,dn,dh = g.dynamic_link_prediction(data, data.va, hs)
@@ -109,10 +118,10 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
     model = best[1]
     with torch.no_grad():
         model.eval()
-        _,hs = model(data.x, data.eis, data.tr)
+        zs,hs = model(data.x, data.eis, data.tr)
         hs = hs[end_tr:] if not dynamic else hs[end_tr-1:]
 
-        if not dynamic and type(model) != HybridProbTGCN:
+        if not dynamic:
             p,n,h = g.link_prediction(data, data.te, hs, start=end_tr)
             t, f = model.score_fn(p,n,h)
             sscores = get_score(t, f)
@@ -125,6 +134,35 @@ def train(model, data, epochs=1500, dynamic=False, nratio=10, lr=0.01):
             % fmt_score(sscores))
 
             return {'auc': sscores[0], 'ap': sscores[1]}
+
+        if type(model) == HybridProbTGCN:
+            # H matrix is already correctly aligned, so ignore
+            p,n,_ = g.dynamic_link_prediction(data, data.te, zs[end_tr-1:], start=end_tr-1)
+            print(len(p))
+            print(hs.size(0))
+            t, f = model.score_fn(p,n,hs)
+            dscores = get_score(t, f)
+
+            p,n,_ = g.dynamic_new_link_prediction(data, data.te, zs[end_tr-1:], start=end_tr-1)
+            t, f = model.score_fn(p,n,hs)
+            nscores = get_score(t, f)
+
+            print(
+                '''
+                Final scores: 
+                    Dynamic LP:     %s 
+                    Dynamic New LP: %s 
+                ''' %
+                (fmt_score(dscores),
+                 fmt_score(nscores))
+            )
+
+            return {
+                'pred-auc': dscores[0],
+                'pred-ap': dscores[1],
+                'new-auc': nscores[0], 
+                'new-ap': nscores[1],
+            }
 
         else:
             p,n,h = g.dynamic_link_prediction(data, data.te, hs, start=end_tr-1)
@@ -166,12 +204,20 @@ if __name__ == '__main__':
         '-s', '--static',
         action='store_false'
     )
+
+    ap.add_argument(
+        '-H', '--hybrid',
+        action='store_true'
+    )
     args = ap.parse_args()
 
-    outf = 'tedge_gru.txt' 
+    outf = 'hybrid.txt' 
     for d in ['enron10', 'fb', 'dblp']:
         data = vd.load_vgrnn(d)
-        model = ProbTGCN(data.x_dim, 32, 16, lstm=False)
+        model = ProbTGCN(data.x_dim, 32, 16, lstm=False) if not args.hybrid \
+            else HybridProbTGCN(data.x_dim, 32, 16, lstm=False)
+        
+        args.static = True if args.hybrid else args.static
         stats = [train(deepcopy(model), data, dynamic=args.static, lr=args.lr) for _ in range(NUM_TESTS)]
 
         df = pd.DataFrame(stats)

@@ -39,6 +39,13 @@ class SoftmaxDetector(nn.Module):
 
         return (src_score+dst_score)*0.5
 
+class SigmoidDetector(SoftmaxDetector):
+    '''
+    Use BCE logits loss for multiclass instead of CE
+    '''
+    def __init__(self, in_feats, num_nodes):
+        super().__init__(in_feats, num_nodes)
+        self.sm = nn.Sigmoid()
 
 class SoftmaxPredictor(SoftmaxDetector):
     '''

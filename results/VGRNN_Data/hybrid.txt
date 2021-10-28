@@ -1,0 +1,38 @@
+enron10
+===== LR 0.0100 =====
+pred-auc    94.970773
+pred-ap     94.683142
+new-auc     95.237290
+new-ap      94.830077
+dtype: float64
+pred-auc    0.501771
+pred-ap     0.553279
+new-auc     0.296648
+new-ap      0.709986
+dtype: float64
+
+fb
+===== LR 0.0100 =====
+pred-auc    91.908673
+pred-ap     91.193503
+new-auc     90.895079
+new-ap      89.910440
+dtype: float64
+pred-auc    0.556498
+pred-ap     0.732480
+new-auc     0.504648
+new-ap      0.631679
+dtype: float64
+
+dblp
+===== LR 0.0200 =====
+pred-auc    91.064815
+pred-ap     93.040211
+new-auc     90.358186
+new-ap      91.937574
+dtype: float64
+pred-auc    0.591877
+pred-ap     0.522136
+new-auc     0.663105
+new-ap      0.781304
+dtype: float64
